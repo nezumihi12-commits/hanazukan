@@ -1,0 +1,1346 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>花図鑑 — 1000属検定C級</title>
+<!-- Firebase SDK (compat版・scriptタグで読み込み) -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;600;800&family=DM+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0f1a14;
+    --surface: #1a2a1f;
+    --surface2: #223028;
+    --border: #2e4a38;
+    --accent: #5dba7a;
+    --accent2: #a8e6bc;
+    --warn: #e8a84a;
+    --danger: #e85a5a;
+    --text: #e8f0eb;
+    --text2: #8aab95;
+    --text3: #4a6b55;
+    --gold: #d4af37;
+    --radius: 12px;
+    --radius-sm: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    font-family: 'DM Mono', monospace;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+  }
+  nav {
+    display: flex;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    order: 999;
+  }
+  nav button {
+    flex: 1; padding: 12px 4px 10px;
+    background: none; border: none; color: var(--text3);
+    font-family: 'Shippori Mincho', serif; font-size: 12px;
+    cursor: pointer; transition: color .2s;
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+  }
+  nav button .nav-icon { font-size: 20px; }
+  nav button.active { color: var(--accent); }
+  .screen { display: none; flex: 1; overflow-y: auto; flex-direction: column; }
+  .screen.active { display: flex; }
+
+  /* HOME */
+  #home { padding: 20px 16px; gap: 16px; }
+  .home-header { text-align: center; padding: 8px 0; }
+  .home-header h1 { font-family: 'Shippori Mincho', serif; font-size: 24px; font-weight: 800; color: var(--accent2); }
+  .home-header p { font-size: 11px; color: var(--text3); margin-top: 3px; letter-spacing: .08em; }
+  .progress-ring-wrap { display: flex; justify-content: center; align-items: center; gap: 24px; }
+  .ring-container { position: relative; width: 110px; height: 110px; }
+  .ring-container svg { transform: rotate(-90deg); }
+  .ring-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .ring-center .num { font-family: 'Shippori Mincho', serif; font-size: 26px; font-weight: 800; color: var(--accent); }
+  .ring-center .denom { font-size: 10px; color: var(--text3); }
+  .ring-stats { display: flex; flex-direction: column; gap: 10px; }
+  .stat-item .label { font-size: 10px; color: var(--text3); }
+  .stat-item .value { font-size: 17px; color: var(--text); font-weight: 500; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; }
+  .card-title { font-family: 'Shippori Mincho', serif; font-size: 12px; color: var(--text2); letter-spacing: .06em; margin-bottom: 10px; }
+  .btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 14px; border-radius: var(--radius-sm); border: none; font-family: 'Shippori Mincho', serif; font-size: 15px; font-weight: 600; cursor: pointer; transition: opacity .15s, transform .1s; }
+  .btn:active { opacity: .75; transform: scale(.98); }
+  .btn-primary { background: var(--accent); color: #0f1a14; }
+  .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+  .mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .mode-btn { background: var(--surface2); border: 1.5px solid var(--border); border-radius: var(--radius-sm); padding: 12px 8px; color: var(--text); font-family: 'Shippori Mincho', serif; font-size: 12px; cursor: pointer; text-align: center; transition: all .2s; line-height: 1.4; }
+  .mode-btn .mode-icon { font-size: 20px; display: block; margin-bottom: 4px; }
+  .mode-btn.selected { border-color: var(--accent); background: #1e3a28; }
+  .science-badge { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--surface2); border-radius: var(--radius-sm); border-left: 3px solid var(--gold); }
+  .science-badge .info { font-size: 11px; color: var(--text2); line-height: 1.5; }
+  .science-badge .info strong { color: var(--gold); }
+
+  /* QUIZ */
+  #quiz { padding: 0; }
+  .quiz-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .quiz-progress-bar { height: 3px; background: var(--border); flex-shrink: 0; }
+  .quiz-progress-fill { height: 100%; background: var(--accent); transition: width .3s; }
+  .quiz-counter { font-size: 12px; color: var(--text2); }
+  .quiz-score-live { font-size: 12px; color: var(--accent); font-weight: 500; }
+  .quiz-exit { background: none; border: none; color: var(--text3); font-size: 20px; cursor: pointer; padding: 4px; }
+  .quiz-body { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+  .question-type-badge { display: inline-block; font-size: 10px; letter-spacing: .1em; color: var(--text3); background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 2px 8px; align-self: flex-start; }
+  .question-text { font-family: 'Shippori Mincho', serif; font-size: 20px; font-weight: 600; line-height: 1.5; }
+  .question-hint { font-size: 12px; color: var(--text3); background: var(--surface2); border-radius: var(--radius-sm); padding: 8px 12px; line-height: 1.6; }
+  .answer-fields { display: flex; flex-direction: column; gap: 10px; }
+  .field-label { font-size: 11px; color: var(--text3); letter-spacing: .06em; margin-bottom: 4px; }
+  .answer-input { width: 100%; background: var(--surface2); border: 1.5px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-family: 'DM Mono', monospace; font-size: 16px; padding: 13px 12px; outline: none; transition: border-color .2s; -webkit-appearance: none; }
+  .answer-input:focus { border-color: var(--accent); }
+  .answer-input.correct { border-color: var(--accent); background: #1a3525; }
+  .answer-input.partial { border-color: var(--warn); background: #2a2010; }
+  .answer-input.wrong { border-color: var(--danger); background: #2a1515; }
+  .feedback-box { border-radius: var(--radius-sm); padding: 12px; font-size: 13px; line-height: 1.7; display: none; }
+  .feedback-box.show { display: block; }
+  .feedback-box.correct { background: #1a3525; border: 1px solid var(--accent); }
+  .feedback-box.partial { background: #2a2010; border: 1px solid var(--warn); }
+  .feedback-box.wrong { background: #2a1515; border: 1px solid var(--danger); }
+  .feedback-box .correct-ans { color: var(--accent2); font-weight: 500; }
+  .feedback-note { font-size: 11px; color: var(--text3); margin-top: 6px; }
+  .quiz-footer { padding: 12px 14px; background: var(--surface); border-top: 1px solid var(--border); flex-shrink: 0; }
+
+  /* RESULT */
+  .result-screen { display: none; flex-direction: column; align-items: center; justify-content: center; padding: 28px 20px; gap: 16px; position: absolute; inset: 0; background: var(--bg); overflow-y: auto; }
+  .result-screen.show { display: flex; }
+  .result-emoji { font-size: 52px; }
+  .result-score-big { font-family: 'Shippori Mincho', serif; font-size: 48px; font-weight: 800; color: var(--accent); }
+  .result-score-big span { font-size: 18px; color: var(--text2); }
+  .result-detail { width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+  .result-row { display: flex; justify-content: space-between; font-size: 13px; }
+  .result-row .lbl { color: var(--text3); }
+  .result-row .val { color: var(--text); }
+
+  /* ZUKAN */
+  #zukan { padding: 0; }
+  .zukan-header { padding: 10px 14px; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0; display: flex; flex-direction: column; gap: 8px; }
+  .zukan-search { width: 100%; background: var(--surface2); border: 1.5px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-family: 'DM Mono', monospace; font-size: 14px; padding: 9px 12px; outline: none; }
+  .zukan-search:focus { border-color: var(--accent); }
+  .filter-row { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+  .filter-row::-webkit-scrollbar { display: none; }
+  .filter-chip { flex-shrink: 0; padding: 5px 12px; border-radius: 20px; border: 1px solid var(--border); background: var(--surface2); color: var(--text2); font-size: 12px; cursor: pointer; white-space: nowrap; transition: all .2s; }
+  .filter-chip.active { background: var(--accent); color: #0f1a14; border-color: var(--accent); font-weight: 600; }
+  .zukan-grid { flex: 1; overflow-y: auto; padding: 10px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; align-content: start; -webkit-overflow-scrolling: touch; }
+  .zukan-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 6px; cursor: pointer; transition: border-color .2s, transform .1s; display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 85px; justify-content: center; position: relative; overflow: hidden; }
+  .zukan-card:active { transform: scale(.95); }
+  .zukan-card.has-photo { border-color: var(--accent2); }
+  .zukan-card.has-inat { border-color: var(--border); background: #1a2a20; }
+  .zukan-card.locked { opacity: .3; }
+  .zukan-card .card-thumb { width: 100%; height: 50px; object-fit: cover; border-radius: 3px; }
+  .zukan-card .card-latin { font-size: 9px; font-style: italic; color: var(--text2); text-align: center; line-height: 1.3; word-break: break-all; }
+  .zukan-card .card-fam { font-family: 'Shippori Mincho', serif; font-size: 10px; color: var(--text3); text-align: center; }
+  .zukan-card .lock-icon { font-size: 18px; color: var(--text3); }
+  .mastery-dot { width: 5px; height: 5px; border-radius: 50%; position: absolute; top: 4px; left: 4px; }
+  .mastery-dot.m0 { background: var(--text3); }
+  .mastery-dot.m1 { background: var(--warn); }
+  .mastery-dot.m2 { background: var(--accent); }
+  .mastery-dot.m3 { background: var(--gold); }
+  .photo-badge { position: absolute; top: 3px; right: 3px; font-size: 9px; background: rgba(0,0,0,.55); border-radius: 3px; padding: 1px 3px; color: var(--accent2); }
+
+  /* MODAL */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.75); z-index: 100; align-items: flex-end; justify-content: center; }
+  .modal-overlay.show { display: flex; }
+  .modal-sheet { background: var(--surface); border-radius: 20px 20px 0 0; width: 100%; max-height: 92dvh; overflow-y: auto; padding: 16px 18px 36px; display: flex; flex-direction: column; gap: 14px; animation: slideUp .22s ease; -webkit-overflow-scrolling: touch; }
+  @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+  .modal-handle { width: 36px; height: 4px; background: var(--border); border-radius: 2px; align-self: center; margin-bottom: 2px; }
+  .modal-latin { font-style: italic; font-size: 22px; color: var(--accent2); }
+  .modal-sub { font-family: 'Shippori Mincho', serif; font-size: 13px; color: var(--text2); margin-top: -6px; }
+  .modal-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .info-item { background: var(--surface2); border-radius: var(--radius-sm); padding: 10px 11px; }
+  .info-item .lbl { font-size: 10px; color: var(--text3); margin-bottom: 2px; }
+  .info-item .val { font-size: 13px; color: var(--text); line-height: 1.4; }
+  .info-item.full { grid-column: 1/-1; }
+  .modal-note { font-size: 12px; color: var(--text2); background: var(--surface2); border-left: 3px solid var(--border); padding: 9px 12px; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; line-height: 1.6; }
+
+  /* PHOTOS */
+  .section-label { font-size: 11px; color: var(--text3); letter-spacing: .06em; }
+  .inat-photos { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+  .inat-photos::-webkit-scrollbar { display: none; }
+  .inat-photo-wrap { flex-shrink: 0; position: relative; }
+  .inat-photo { width: 90px; height: 90px; object-fit: cover; border-radius: var(--radius-sm); border: 1px solid var(--border); cursor: pointer; }
+  .inat-badge { position: absolute; bottom: 3px; left: 3px; font-size: 9px; background: rgba(0,0,0,.7); color: #aaa; border-radius: 3px; padding: 1px 4px; }
+  .inat-loading { font-size: 12px; color: var(--text3); padding: 8px 0; }
+
+  .my-photos-grid { display: flex; gap: 6px; flex-wrap: wrap; }
+  .my-photo-wrap { position: relative; width: 90px; height: 90px; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); cursor: pointer; }
+  .my-photo { width: 100%; height: 100%; object-fit: cover; }
+  .photo-delete { position: absolute; top: 3px; right: 3px; background: rgba(0,0,0,.65); border: none; color: #fff; border-radius: 50%; width: 20px; height: 20px; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .photo-add-btn { width: 90px; height: 90px; border: 1.5px dashed var(--border); border-radius: var(--radius-sm); background: var(--surface2); color: var(--text3); font-size: 26px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all .2s; flex-shrink: 0; }
+  .photo-add-btn:active { border-color: var(--accent); color: var(--accent); }
+
+  .source-row { display: flex; gap: 7px; }
+  .source-link { flex: 1; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 9px; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text2); font-size: 12px; text-decoration: none; }
+  .location-row { display: flex; align-items: center; gap: 8px; background: var(--surface2); border-radius: var(--radius-sm); padding: 9px 11px; }
+  .location-text { font-size: 12px; color: var(--text2); flex: 1; line-height: 1.4; }
+  .location-btn { padding: 5px 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; color: var(--text2); font-size: 11px; cursor: pointer; white-space: nowrap; }
+  .mastery-row { display: flex; gap: 6px; }
+  .mastery-btn { flex: 1; padding: 8px 4px; border-radius: var(--radius-sm); border: 1.5px solid var(--border); background: var(--surface2); color: var(--text2); font-size: 11px; cursor: pointer; text-align: center; transition: all .2s; line-height: 1.4; }
+  .mastery-btn.active-m1 { border-color: var(--warn); color: var(--warn); background: #2a2010; }
+  .mastery-btn.active-m2 { border-color: var(--accent); color: var(--accent); background: #1a3525; }
+  .mastery-btn.active-m3 { border-color: var(--gold); color: var(--gold); background: #2a2010; }
+
+  /* STATS */
+  #stats { padding: 18px 14px; gap: 14px; }
+  .stats-title { font-family: 'Shippori Mincho', serif; font-size: 17px; font-weight: 800; color: var(--accent2); }
+  .science-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .science-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
+  .science-card .sc-label { font-size: 10px; color: var(--text3); }
+  .science-card .sc-val { font-family: 'Shippori Mincho', serif; font-size: 22px; font-weight: 800; color: var(--text); }
+  .science-card .sc-sub { font-size: 11px; color: var(--text2); }
+  .history-list { display: flex; flex-direction: column; gap: 7px; }
+  .history-item { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 11px 13px; display: flex; justify-content: space-between; align-items: center; }
+  .history-item .date { font-size: 11px; color: var(--text3); }
+  .history-item .score { font-size: 14px; color: var(--accent); font-weight: 500; }
+  .history-item .hmode { font-size: 11px; color: var(--text2); }
+  .empty-state { text-align: center; color: var(--text3); font-size: 13px; padding: 28px; line-height: 1.8; }
+  .save-status { font-size: 10px; color: var(--text3); text-align: right; }
+
+  /* FULLSCREEN */
+  .fullscreen-photo { display: none; position: fixed; inset: 0; background: #000; z-index: 300; align-items: center; justify-content: center; }
+  .fullscreen-photo.show { display: flex; }
+  .fullscreen-photo img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .fullscreen-close { position: absolute; top: 16px; right: 16px; background: rgba(0,0,0,.6); border: none; color: #fff; font-size: 22px; width: 38px; height: 38px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+
+  .toast { position: fixed; bottom: 72px; left: 50%; transform: translateX(-50%); background: var(--surface2); border: 1px solid var(--border); border-radius: 20px; padding: 7px 16px; font-size: 13px; color: var(--text); z-index: 200; opacity: 0; transition: opacity .3s; white-space: nowrap; pointer-events: none; }
+  .toast.show { opacity: 1; }
+  input[type="file"] { display: none; }
+</style>
+</head>
+<body>
+
+<div id="home" class="screen active">
+  <div class="home-header">
+    <h1>花図鑑</h1>
+    <p>1000属検定 C級 学習アプリ</p>
+  </div>
+  <div class="progress-ring-wrap">
+    <div class="ring-container">
+      <svg width="110" height="110" viewBox="0 0 110 110">
+        <circle cx="55" cy="55" r="46" fill="none" stroke="#2e4a38" stroke-width="9"/>
+        <circle id="ringFill" cx="55" cy="55" r="46" fill="none" stroke="#5dba7a" stroke-width="9"
+          stroke-dasharray="289" stroke-dashoffset="289" stroke-linecap="round"/>
+      </svg>
+      <div class="ring-center">
+        <span class="num" id="unlockedCount">0</span>
+        <span class="denom">/ 300属</span>
+      </div>
+    </div>
+    <div class="ring-stats">
+      <div class="stat-item"><div class="label">写真登録</div><div class="value" id="photoCount">0 属</div></div>
+      <div class="stat-item"><div class="label">★★★習熟</div><div class="value" id="masteredCount">0 属</div></div>
+      <div class="stat-item"><div class="label">今日</div><div class="value" id="todayCount">0 問</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">出題モード</div>
+    <div class="mode-grid" id="modeGrid">
+      <button class="mode-btn selected" data-mode="latin2all" onclick="selectMode(this)"><span class="mode-icon">🔤</span>属名→科名・和名</button>
+      <button class="mode-btn" data-mode="jp2latin" onclick="selectMode(this)"><span class="mode-icon">🌿</span>和名→属名</button>
+      <button class="mode-btn" data-mode="family2genus" onclick="selectMode(this)"><span class="mode-icon">🌳</span>科名→属名列挙</button>
+      <button class="mode-btn" data-mode="mixed" onclick="selectMode(this)"><span class="mode-icon">🎲</span>ランダム混合</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">対象絞り込み</div>
+    <div class="mode-grid" id="targetGrid">
+      <button class="mode-btn selected" data-target="all" onclick="selectTarget(this)"><span class="mode-icon">📚</span>全300属</button>
+      <button class="mode-btn" data-target="unlocked" onclick="selectTarget(this)"><span class="mode-icon">🔓</span>解放済みのみ</button>
+      <button class="mode-btn" data-target="weak" onclick="selectTarget(this)"><span class="mode-icon">💢</span>苦手のみ</button>
+      <button class="mode-btn" data-target="nophoto" onclick="selectTarget(this)"><span class="mode-icon">📷</span>写真未登録</button>
+    </div>
+  </div>
+
+  <button class="btn btn-primary" onclick="startQuiz()">🌸 練習する（20問）</button>
+  <div class="science-badge">
+    <div class="info"><strong>本番ルール適用中</strong><br>スペルミス1箇所→0.5点　200点満点・180点以上で合格</div>
+  </div>
+  <div class="save-status" id="saveStatus">💾 データはClaudeアカウントに保存されます</div>
+</div>
+
+<div id="quiz" class="screen" style="position:relative">
+  <div class="quiz-header">
+    <span class="quiz-counter" id="quizCounter">1 / 20</span>
+    <span class="quiz-score-live" id="quizScoreLive">0.0 pt</span>
+    <button class="quiz-exit" onclick="exitQuiz()">✕</button>
+  </div>
+  <div class="quiz-progress-bar"><div class="quiz-progress-fill" id="quizProgressFill"></div></div>
+  <div class="quiz-body" id="quizBody"></div>
+  <div class="quiz-footer">
+    <button class="btn btn-primary" id="quizActionBtn" onclick="handleQuizAction()">答え合わせ</button>
+  </div>
+  <div class="result-screen" id="resultScreen">
+    <div class="result-emoji" id="resultEmoji">🌸</div>
+    <div class="result-score-big" id="resultScore">0<span>/200</span></div>
+    <div id="resultLabel" style="font-size:14px;color:var(--text2)"></div>
+    <div class="result-detail" id="resultDetail"></div>
+    <button class="btn btn-primary" onclick="finishQuiz()" style="width:100%">図鑑に戻る</button>
+    <button class="btn btn-secondary" onclick="startQuiz()" style="width:100%">もう一回</button>
+  </div>
+</div>
+
+<div id="zukan" class="screen">
+  <div class="zukan-header">
+    <input class="zukan-search" type="search" placeholder="属名・科名・和名で検索…" autocomplete="off" oninput="filterZukan(this.value)">
+    <div class="filter-row">
+      <button class="filter-chip active" onclick="setFilter(this,'all')">すべて</button>
+      <button class="filter-chip" onclick="setFilter(this,'unlocked')">解放済み</button>
+      <button class="filter-chip" onclick="setFilter(this,'photo')">写真あり</button>
+      <button class="filter-chip" onclick="setFilter(this,'m3')">★★★</button>
+      <button class="filter-chip" onclick="setFilter(this,'m2')">★★</button>
+      <button class="filter-chip" onclick="setFilter(this,'m1')">★</button>
+      <button class="filter-chip" onclick="setFilter(this,'locked')">未解放</button>
+    </div>
+  </div>
+  <div class="zukan-grid" id="zukanGrid"></div>
+</div>
+
+<div id="stats" class="screen">
+  <div class="stats-title">学習記録</div>
+  <div class="science-grid" id="statsGrid"></div>
+  <div class="card-title">セッション履歴</div>
+  <div class="history-list" id="historyList"></div>
+</div>
+
+<nav>
+  <button class="active" onclick="showScreen('home',this)"><span class="nav-icon">🏠</span>ホーム</button>
+  <button onclick="showScreen('zukan',this)"><span class="nav-icon">📖</span>図鑑</button>
+  <button onclick="showScreen('stats',this)"><span class="nav-icon">📊</span>記録</button>
+</nav>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modalOverlay" onclick="closeModalIfOutside(event)">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start">
+      <div>
+        <div class="modal-latin" id="mLatin"></div>
+        <div class="modal-sub" id="mSub"></div>
+      </div>
+      <button onclick="closeModal()" style="background:none;border:none;color:var(--text3);font-size:22px;cursor:pointer;padding:4px">✕</button>
+    </div>
+    <div class="modal-info-grid" id="mInfoGrid"></div>
+
+    <!-- 写真 -->
+    <div>
+      <div class="section-label" style="margin-bottom:6px">📷 写真</div>
+      <div class="my-photos-grid" id="myPhotosGrid"></div>
+    </div>
+
+    <!-- 外部リンク（写真収集用） -->
+    <div class="source-row" id="mSourceRow"></div>
+
+    <div class="location-row">
+      <span style="font-size:16px">📍</span>
+      <span class="location-text" id="mLocationText">発見場所を記録</span>
+      <button class="location-btn" onclick="recordLocation()">現在地取得</button>
+    </div>
+
+    <div>
+      <div class="section-label" style="margin-bottom:6px">習熟度</div>
+      <div class="mastery-row" id="mMasteryRow"></div>
+    </div>
+  </div>
+</div>
+
+<!-- FULLSCREEN -->
+<div class="fullscreen-photo" id="fullscreenPhoto">
+  <img id="fullscreenImg" src="" alt="">
+  <button class="fullscreen-close" onclick="closeFullscreen()">✕</button>
+</div>
+
+<div class="toast" id="toast"></div>
+<input type="file" id="photoInput" accept="image/*" multiple onchange="handlePhotoUpload(event)">
+
+<script>
+// ========== GENUS DATA ==========
+const GENERA = [
+  {latin:"Abelia",read:"アベリア",family:"スイカズラ科",oldFamily:"",jpName:"ツクバネウツギ属",note:""},
+  {latin:"Abies",read:"アビエス",family:"マツ科",oldFamily:"",jpName:"モミ属",note:"シラビソ（シラベ）、トドマツ"},
+  {latin:"Abutilon",read:"アブチロン",family:"アオイ科",oldFamily:"",jpName:"イチビ属",note:"ウキツリボク"},
+  {latin:"Acacia",read:"アカシア",family:"マメ科",oldFamily:"",jpName:"アカシア属",note:"フサアカシア。ニセアカシアはRobinia。Mimosaの名で流通"},
+  {latin:"Acer",read:"エイサー・アーケル",family:"ムクロジ科",oldFamily:"カエデ科",jpName:"カエデ属",note:"イロハモミジ、イタヤカエデ"},
+  {latin:"Achillea",read:"アキレア",family:"キク科",oldFamily:"",jpName:"ノコギリソウ属",note:"ヤロー"},
+  {latin:"Acorus",read:"アコルス",family:"ショウブ科",oldFamily:"セキショウ科",jpName:"ショウブ属",note:"セキショウ。ハナショウブはIris"},
+  {latin:"Actinotus",read:"アクチノータス",family:"セリ科",oldFamily:"",jpName:"フランネルフラワー",note:""},
+  {latin:"Adiantum",read:"アジアンタム",family:"イノモトソウ科",oldFamily:"",jpName:"ホウライシダ属",note:"クジャクシダ、ハコネシダ"},
+  {latin:"Adonis",read:"アドニス",family:"キンポウゲ科",oldFamily:"",jpName:"フクジュソウ属",note:""},
+  {latin:"Agapanthus",read:"アガパンサス",family:"ヒガンバナ科",oldFamily:"ネギ（ユリ）科",jpName:"ムラサキクンシラン属",note:"クンシランはClivia。ヒメアガパンサスはTriteleia"},
+  {latin:"Ageratum",read:"アゲラタム",family:"キク科",oldFamily:"",jpName:"カッコウアザミ属",note:""},
+  {latin:"Ajuga",read:"アジュガ",family:"シソ科",oldFamily:"",jpName:"キランソウ属",note:"アジュガ、ジュウニヒトエ"},
+  {latin:"Alchemilla",read:"アルケミラ",family:"バラ科",oldFamily:"",jpName:"ハゴロモグサ属",note:"レディースマントル"},
+  {latin:"Allium",read:"アリウム",family:"ヒガンバナ科",oldFamily:"ネギ（ユリ）科",jpName:"ネギ属",note:"タマネギ、ニンニク、チャイブ"},
+  {latin:"Aloe",read:"アロエ",family:"ススキノキ科",oldFamily:"ツルボラン（ユリ）科",jpName:"アロエ属",note:"キダチアロエ、千代田錦"},
+  {latin:"Alstroemeria",read:"アルストロメリア",family:"ユリズイセン科",oldFamily:"",jpName:"ユリズイセン属",note:""},
+  {latin:"Alternanthera",read:"アルテルナンテラ",family:"ヒユ科",oldFamily:"",jpName:"ツルノゲイトウ属",note:"アカバセンニチコウ、モヨウビユ。Telanthera、Achyranthesの名で流通"},
+  {latin:"Alyssum",read:"アリッサム",family:"アブラナ科",oldFamily:"",jpName:"アレチナズナ属",note:"スイートアリッサムはLobularia"},
+  {latin:"Amaranthus",read:"アマランサス",family:"ヒユ科",oldFamily:"",jpName:"ヒユ属",note:"ハゲイトウ、ヒモゲイトウ、イヌビユ。ケイトウはCelosia"},
+  {latin:"Ammi",read:"アミ",family:"セリ科",oldFamily:"",jpName:"ドクゼリモドキ属",note:"ドクゼリモドキ（レースフラワー、ホワイトレースフラワー）"},
+  {latin:"Amygdalus",read:"アミグダルス",family:"バラ科",oldFamily:"",jpName:"モモ属",note:"アーモンド。Prunusから分けられた"},
+  {latin:"Anemone",read:"アネモネ",family:"キンポウゲ科",oldFamily:"",jpName:"イチリンソウ属",note:"ニリンソウ、ハクサンイチゲ、シュウメイギク"},
+  {latin:"Angelonia",read:"アンゲロニア",family:"オオバコ科",oldFamily:"ゴマノハグサ科",jpName:"アンゲロンソウ属",note:""},
+  {latin:"Anigozanthos",read:"アニゴザントス",family:"ハエモドルム科",oldFamily:"",jpName:"アニゴザントス属",note:"カンガルーポー"},
+  {latin:"Anthurium",read:"アンスリウム",family:"サトイモ科",oldFamily:"",jpName:"ベニウチワ属",note:""},
+  {latin:"Antirrhinum",read:"アンティルリーヌム",family:"オオバコ科",oldFamily:"ゴマノハグサ科",jpName:"キンギョソウ属",note:"ヒメキンギョソウはLinaria"},
+  {latin:"Aquilegia",read:"アキレギア",family:"キンポウゲ科",oldFamily:"",jpName:"オダマキ属",note:""},
+  {latin:"Arctotis",read:"アークトチス",family:"キク科",oldFamily:"",jpName:"ハゴロモギク属",note:"ジャノメギク。Venidiumを含む"},
+  {latin:"Ardisia",read:"アルディシア",family:"サクラソウ科",oldFamily:"",jpName:"ヤブコウジ属",note:"マンリョウ、カラタチバナ、ヤブコウジ。センリョウはSarcandra"},
+  {latin:"Arenaria",read:"アレナリア",family:"ナデシコ科",oldFamily:"",jpName:"ノミノツヅリ属",note:""},
+  {latin:"Argyranthemum",read:"アルギランセマム",family:"キク科",oldFamily:"",jpName:"モクシュンギク属",note:"マーガレット。以前はChrysanthemum"},
+  {latin:"Armeniaca",read:"アルメニアカ",family:"バラ科",oldFamily:"",jpName:"アンズ属",note:"ウメ。Prunusから分けられた"},
+  {latin:"Armeria",read:"アルメリア",family:"イソマツ科",oldFamily:"",jpName:"ハマカンザシ属",note:""},
+  {latin:"Asclepias",read:"アスクレピアス",family:"キョウチクトウ科",oldFamily:"ガガイモ科",jpName:"トウワタ属",note:"トウワタ、ヤナギトウワタ。フウセントウワタはGomphocarpus"},
+  {latin:"Asparagus",read:"アスパラガス",family:"キジカクシ科",oldFamily:"キジカクシ（ユリ）科",jpName:"キジカクシ属",note:"アスパラガス、キジカクシ。Asparagus asparagoidesがスマイラックスの名で流通"},
+  {latin:"Asplenium",read:"アスプレニウム",family:"チャセンシダ科",oldFamily:"",jpName:"チャセンシダ属",note:"オオタニワタリ、マザーファーン"},
+  {latin:"Aster",read:"アスター",family:"キク科",oldFamily:"",jpName:"シオン属",note:"クジャクアスター。Callistephusの園芸名としても使用"},
+  {latin:"Astilbe",read:"アスチルベ",family:"ユキノシタ科",oldFamily:"",jpName:"チダケサシ属",note:"アワモリショウマ、アカショウマ、トリアシショウマ"},
+  {latin:"Astrantia",read:"アストランチア",family:"セリ科",oldFamily:"",jpName:"アストランチア属",note:""},
+  {latin:"Aucuba",read:"アウクバ",family:"アオキ科",oldFamily:"ミズキ科",jpName:"アオキ属",note:""},
+  {latin:"Bassia",read:"バッシア",family:"ヒユ科",oldFamily:"アカザ科",jpName:"ムヒョウソウ属",note:"ホウキギ。Kochiaの名で流通"},
+  {latin:"Begonia",read:"ベゴニア",family:"シュウカイドウ科",oldFamily:"",jpName:"シュウカイドウ属",note:""},
+  {latin:"Bellis",read:"ベリス",family:"キク科",oldFamily:"",jpName:"ヒナギク属",note:"ヒナギク（デージー）"},
+  {latin:"Bidens",read:"ビデンス",family:"キク科",oldFamily:"",jpName:"センダングサ属",note:"ウインターコスモス"},
+  {latin:"Boronia",read:"ボロニア",family:"ミカン科",oldFamily:"",jpName:"ボロニア",note:""},
+  {latin:"Bougainvillea",read:"ブーゲンビレア",family:"オシロイバナ科",oldFamily:"",jpName:"イカダカズラ属",note:""},
+  {latin:"Brassica",read:"ブラシカ",family:"アブラナ科",oldFamily:"",jpName:"アブラナ属",note:"ハボタン、キャベツ、ハクサイ、ブロッコリ"},
+  {latin:"Buddleja",read:"ブッドレヤ",family:"ゴマノハグサ科",oldFamily:"フジウツギ科",jpName:"フジウツギ属",note:""},
+  {latin:"Bupleurum",read:"ブプレウルム",family:"セリ科",oldFamily:"",jpName:"ホタルサイコ属",note:"ツキヌキサイコ"},
+  {latin:"Caladium",read:"カラジウム",family:"サトイモ科",oldFamily:"",jpName:"ニシキイモ属",note:"ヒメハニシキ"},
+  {latin:"Calendula",read:"カレンデュラ",family:"キク科",oldFamily:"",jpName:"キンセンカ属",note:"キンレンカはTropaeolum"},
+  {latin:"Calibrachoa",read:"カリブラコア",family:"ナス科",oldFamily:"",jpName:"カリブラコア",note:""},
+  {latin:"Callistephus",read:"カリステフス",family:"キク科",oldFamily:"",jpName:"サツマギク属",note:"エゾギク（アスター）。Asterは別属"},
+  {latin:"Calluna",read:"カルーナ",family:"ツツジ科",oldFamily:"",jpName:"ギョリュウモドキ属",note:"ギョリュウはTamarix"},
+  {latin:"Camellia",read:"カメリア",family:"ツバキ科",oldFamily:"",jpName:"ツバキ属",note:"サザンカ、チャ、キンカチャ。ナツツバキはStewartia"},
+  {latin:"Campanula",read:"カンパニュラ",family:"キキョウ科",oldFamily:"",jpName:"ホタルブクロ属",note:"フウリンソウ、モモバギキョウ"},
+  {latin:"Canna",read:"カンナ",family:"カンナ科",oldFamily:"",jpName:"カンナ属",note:"ダンドク"},
+  {latin:"Capsicum",read:"カプシカム",family:"ナス科",oldFamily:"",jpName:"トウガラシ属",note:"ピーマン、パプリカ"},
+  {latin:"Carex",read:"カレックス",family:"カヤツリグサ科",oldFamily:"",jpName:"スゲ属",note:"コウボウムギ、タガネソウ"},
+  {latin:"Carthamus",read:"カルタムス",family:"キク科",oldFamily:"",jpName:"ベニバナ属",note:""},
+  {latin:"Catharanthus",read:"カタランサス",family:"キョウチクトウ科",oldFamily:"",jpName:"ニチニチソウ属",note:"ニチニチソウ（ビンカ）。旧属名のVincaの名でも流通"},
+  {latin:"Cattleya",read:"カトレヤ",family:"ラン科",oldFamily:"",jpName:"ヒノデラン属",note:"カトレヤ"},
+  {latin:"Celosia",read:"セロシア",family:"ヒユ科",oldFamily:"",jpName:"ケイトウ属",note:"ハゲイトウはAmaranthus"},
+  {latin:"Centaurea",read:"セントーレア",family:"キク科",oldFamily:"",jpName:"ヤグルマギク属",note:"ニオイヤグルマギクはAmberboa"},
+  {latin:"Cerasus",read:"ケラスス",family:"バラ科",oldFamily:"",jpName:"サクラ属",note:"セイヨウミザクラ（オウトウ）、カラミザクラ。Prunusから分けられた"},
+  {latin:"Chaenomeles",read:"カエノメレス",family:"バラ科",oldFamily:"",jpName:"ボケ属",note:"クサボケ"},
+  {latin:"Chamaecyparis",read:"カマエキパリス",family:"ヒノキ科",oldFamily:"",jpName:"ヒノキ属",note:"サワラ"},
+  {latin:"Chamaedorea",read:"チャメドレア",family:"ヤシ科",oldFamily:"",jpName:"テーブルヤシ属",note:""},
+  {latin:"Chamelaucium",read:"カメラウキウム",family:"フトモモ科",oldFamily:"",jpName:"ワックスフラワー",note:""},
+  {latin:"Chlorophytum",read:"クロロフィツム",family:"キジカクシ科",oldFamily:"アンテリクム（ユリ）科",jpName:"オリヅルラン属",note:""},
+  {latin:"Chrysanthemum",read:"クリサンセマム",family:"キク科",oldFamily:"",jpName:"キク属",note:"キク（イエギク）、イソギク。一時Dendranthemaとされた"},
+  {latin:"Citrullus",read:"キトルルス",family:"ウリ科",oldFamily:"",jpName:"スイカ属",note:""},
+  {latin:"Citrus",read:"シトラス",family:"ミカン科",oldFamily:"",jpName:"ミカン属",note:"ダイダイ、ユズ、カラタチ、レモン、ライム"},
+  {latin:"Clematis",read:"クレマチス",family:"キンポウゲ科",oldFamily:"",jpName:"センニンソウ属",note:"テッセン、カザグルマ、クサボタン"},
+  {latin:"Codiaeum",read:"コディアエウム",family:"トウダイグサ科",oldFamily:"",jpName:"ヘンヨウボク属",note:"ヘンヨウボク（クロトン）。Crotonの名で流通"},
+  {latin:"Consolida",read:"コンソリダ",family:"キンポウゲ科",oldFamily:"",jpName:"ヒエンソウ属",note:"チドリソウ、ラークスパー。Delphiniumとする見解もある"},
+  {latin:"Convallaria",read:"コンバラリア",family:"キジカクシ科",oldFamily:"スズラン（ユリ）科",jpName:"スズラン属",note:""},
+  {latin:"Cordyline",read:"コルジリネ",family:"キジカクシ科",oldFamily:"リュウケツジュ（リュウゼツラン）科",jpName:"センネンボク属",note:"ニオイシュロラン。ドラセナの名でも流通する"},
+  {latin:"Coreopsis",read:"コレオプシス",family:"キク科",oldFamily:"",jpName:"キンケイギク属",note:"ハルシャギク"},
+  {latin:"Cornus",read:"コルヌス",family:"ミズキ科",oldFamily:"",jpName:"サンシュユ属",note:"ヤマボウシ、ハナミズキ、ゴゼンタチバナ"},
+  {latin:"Cosmos",read:"コスモス",family:"キク科",oldFamily:"",jpName:"コスモス属",note:"キバナコスモス、チョコレートコスモス"},
+  {latin:"Cotinus",read:"コティヌス",family:"ウルシ科",oldFamily:"",jpName:"ケムリノキ属",note:"スモークツリー（ケムリノキ、ハグマノキ）"},
+  {latin:"Craspedia",read:"クラスペディア",family:"キク科",oldFamily:"",jpName:"クラスペディア",note:""},
+  {latin:"Crassula",read:"クラッスラ",family:"ベンケイソウ科",oldFamily:"",jpName:"クラッスラ属",note:"花月（カゲツ）"},
+  {latin:"Crocus",read:"クロッカス",family:"アヤメ科",oldFamily:"",jpName:"サフラン属",note:"イヌサフランはColchicum"},
+  {latin:"Crossandra",read:"クロッサンドラ",family:"キツネノマゴ科",oldFamily:"",jpName:"キツネノヒガサ属",note:"ジョウゴバナ（ヘリトリオシベ）"},
+  {latin:"Crowea",read:"クロウエア",family:"ミカン科",oldFamily:"",jpName:"サザンクロス",note:""},
+  {latin:"Cucumis",read:"ククミス",family:"ウリ科",oldFamily:"",jpName:"キュウリ属",note:"メロン、マクワウリ"},
+  {latin:"Cucurbita",read:"ククルビタ",family:"ウリ科",oldFamily:"",jpName:"カボチャ属",note:"ズッキーニ"},
+  {latin:"Cuphea",read:"クフェア",family:"ミソハギ科",oldFamily:"",jpName:"ハナヤナギ属",note:"メキシコハナヤナギ、タバコソウ（ベニチョウジ）"},
+  {latin:"Cupressus",read:"クプレッサス",family:"ヒノキ科",oldFamily:"",jpName:"イトスギ属",note:""},
+  {latin:"Curcuma",read:"クルクマ",family:"ショウガ科",oldFamily:"",jpName:"ウコン属",note:"ウコン（ターメリック）、ガジュツ"},
+  {latin:"Cycas",read:"サイカス",family:"ソテツ科",oldFamily:"",jpName:"ソテツ属",note:""},
+  {latin:"Cyclamen",read:"シクラメン",family:"サクラソウ科",oldFamily:"",jpName:"シクラメン属",note:"シクラメン（カガリビバナ、ブタノマンジュウ）"},
+  {latin:"Cymbidium",read:"シンビジウム",family:"ラン科",oldFamily:"",jpName:"シュンラン属",note:"カンラン、スルガラン、キンリョウヘン"},
+  {latin:"Cytisus",read:"キティスス",family:"マメ科",oldFamily:"",jpName:"エニシダ属",note:""},
+  {latin:"Dahlia",read:"ダリア",family:"キク科",oldFamily:"",jpName:"ダリア属",note:""},
+  {latin:"Daphne",read:"ダフネ",family:"ジンチョウゲ科",oldFamily:"",jpName:"ジンチョウゲ属",note:"フジモドキ、オニシバリ、ナニワズ、コショウノキ"},
+  {latin:"Delphinium",read:"デルフィニウム",family:"キンポウゲ科",oldFamily:"",jpName:"オオヒエンソウ属",note:"ルリヒエンソウ、ヒエンソウはConsolida"},
+  {latin:"Dendrobium",read:"デンドロビウム",family:"ラン科",oldFamily:"",jpName:"セッコク属",note:"セッコク（長生蘭）"},
+  {latin:"Deutzia",read:"ドイツィア",family:"アジサイ科",oldFamily:"",jpName:"ウツギ属",note:"バイカウツギはPhiladelphus"},
+  {latin:"Dianthus",read:"ダイアンサス",family:"ナデシコ科",oldFamily:"",jpName:"ナデシコ属",note:"セキチク、カーネーション"},
+  {latin:"Dieffenbachia",read:"ディフェンバキア",family:"サトイモ科",oldFamily:"",jpName:"カスリソウ属",note:""},
+  {latin:"Digitalis",read:"ジギタリス",family:"オオバコ科",oldFamily:"ゴマノハグサ科",jpName:"ジギタリス属",note:"キツネノテブクロ"},
+  {latin:"Dimorphotheca",read:"ディモルフォセカ",family:"キク科",oldFamily:"",jpName:"アフリカキンセンカ属",note:""},
+  {latin:"Dracaena",read:"ドラセナ",family:"キジカクシ科",oldFamily:"リュウケツジュ（リュウゼツラン）科",jpName:"リュウケツジュ属",note:"ニオイセンネンボク。センネンボク、青ドラセナ、赤ドラセナはCordyline"},
+  {latin:"Duranta",read:"デュランタ",family:"クマツヅラ科",oldFamily:"",jpName:"タイワンレンギョウ属",note:""},
+  {latin:"Echinops",read:"エキノプス",family:"キク科",oldFamily:"",jpName:"ヒゴタイ属",note:"ルリタマアザミ"},
+  {latin:"Enkianthus",read:"エンキアンサス",family:"ツツジ科",oldFamily:"",jpName:"ドウダンツツジ属",note:"サラサドウダン"},
+  {latin:"Epipremnum",read:"エピプレムナム",family:"サトイモ科",oldFamily:"",jpName:"ハブカズラ属",note:"オウゴンカズラ（ポトス）。Pothos、Scindapsusを含む"},
+  {latin:"Equisetum",read:"エキセタム",family:"トクサ科",oldFamily:"",jpName:"トクサ属",note:"スギナ（ツクシ）"},
+  {latin:"Erica",read:"エリカ",family:"ツツジ科",oldFamily:"",jpName:"エリカ属",note:""},
+  {latin:"Eryngium",read:"エリンジウム",family:"セリ科",oldFamily:"",jpName:"ヒゴタイサイコ属",note:"マツカサアザミ"},
+  {latin:"Eucalyptus",read:"ユーカリプトゥス",family:"フトモモ科",oldFamily:"",jpName:"ユーカリノキ属",note:""},
+  {latin:"Eupatorium",read:"ユーパトリウム",family:"キク科",oldFamily:"",jpName:"ヒヨドリバナ属",note:"フジバカマ"},
+  {latin:"Euphorbia",read:"ユーフォルビア",family:"トウダイグサ科",oldFamily:"",jpName:"トウダイグサ属",note:"ポインセチア、ハナキリン、ハツユキソウ"},
+  {latin:"Euryops",read:"ユーリオプス",family:"キク科",oldFamily:"",jpName:"ユーリオプスデージー",note:"ゴールデンクラッカー"},
+  {latin:"Eustoma",read:"ユーストマ",family:"リンドウ科",oldFamily:"",jpName:"トルコギキョウ属",note:"Lisianthusの名でも流通する"},
+  {latin:"Evolvulus",read:"エボルブルス",family:"ヒルガオ科",oldFamily:"",jpName:"アサガオガラクサ属",note:"エボルブルス、アメリカンブルー"},
+  {latin:"Felicia",read:"フェリシア",family:"キク科",oldFamily:"",jpName:"ルリヒナギク属",note:"ルリヒナギク（ブルーデージー）"},
+  {latin:"Ficus",read:"フィカス",family:"クワ科",oldFamily:"",jpName:"イチジク属",note:"インドゴムノキ、イタビカズラ、インドボダイジュ。ボダイジュはTilia"},
+  {latin:"Forsythia",read:"フォーサイシア",family:"モクセイ科",oldFamily:"",jpName:"レンギョウ属",note:""},
+  {latin:"Fragaria",read:"フラガリア",family:"バラ科",oldFamily:"",jpName:"オランダイチゴ属",note:"オランダイチゴ（いわゆるイチゴ）。キイチゴはRubus"},
+  {latin:"Fraxinus",read:"フラクシヌス",family:"モクセイ科",oldFamily:"",jpName:"トネリコ属",note:""},
+  {latin:"Freesia",read:"フリージア",family:"アヤメ科",oldFamily:"",jpName:"フリージア属",note:""},
+  {latin:"Fuchsia",read:"フクシア",family:"アカバナ科",oldFamily:"",jpName:"フクシア属",note:"ホクシアともいう"},
+  {latin:"Gaillardia",read:"ガイラルディア",family:"キク科",oldFamily:"",jpName:"テンニンギク属",note:"オオテンニンギク"},
+  {latin:"Gardenia",read:"ガーデニア",family:"アカネ科",oldFamily:"",jpName:"クチナシ属",note:""},
+  {latin:"Gaultheria",read:"ゴールテリア",family:"ツツジ科",oldFamily:"",jpName:"シラタマノキ属",note:"アカモノ、チェッカーベリー。Pernettyaを含む"},
+  {latin:"Gazania",read:"ガザニア",family:"キク科",oldFamily:"",jpName:"クンショウギク属",note:""},
+  {latin:"Gentiana",read:"ゲンチアナ",family:"リンドウ科",oldFamily:"",jpName:"リンドウ属",note:""},
+  {latin:"Geranium",read:"ゲラニウム",family:"フウロソウ科",oldFamily:"",jpName:"フウロソウ属",note:"ゲンノショウコ、ヒメフウロ。Pelargoniumの園芸名（ゼラニウム）として使用"},
+  {latin:"Gerbera",read:"ガーベラ",family:"キク科",oldFamily:"",jpName:"ガーベラ属",note:""},
+  {latin:"Gilia",read:"ギリア",family:"ハナシノブ科",oldFamily:"",jpName:"ギリア属",note:"アメリカハナシノブ（ヒメハナシノブ、サンシキギリア）"},
+  {latin:"Gladiolus",read:"グラジオラス",family:"アヤメ科",oldFamily:"",jpName:"トウショウブ属",note:"グラジオラス。Acidantheraを含む"},
+  {latin:"Glandularia",read:"グランドゥラリア",family:"クマツヅラ科",oldFamily:"",jpName:"ビジョザクラ属",note:"バーベナ（ビジョザクラ）"},
+  {latin:"Glechoma",read:"グレコマ",family:"シソ科",oldFamily:"",jpName:"カキドオシ属",note:""},
+  {latin:"Gloriosa",read:"グロリオサ",family:"イヌサフラン科",oldFamily:"イヌサフラン（ユリ）科",jpName:"キツネユリ属",note:"キツネユリ（ユリグルマ）"},
+  {latin:"Glycine",read:"グリシン",family:"マメ科",oldFamily:"",jpName:"ダイズ属",note:"ダイズ（エダマメ）"},
+  {latin:"Gomphrena",read:"ゴンフレナ",family:"ヒユ科",oldFamily:"",jpName:"センニチコウ属",note:""},
+  {latin:"Gossypium",read:"ゴシピウム",family:"アオイ科",oldFamily:"",jpName:"ワタ属",note:""},
+  {latin:"Guzmania",read:"グズマニア",family:"パイナップル科",oldFamily:"",jpName:"グズマニア",note:""},
+  {latin:"Gypsophila",read:"ギプソフィラ",family:"ナデシコ科",oldFamily:"",jpName:"カスミソウ属",note:"シュッコンカスミソウ"},
+  {latin:"Hedera",read:"ヘデラ",family:"ウコギ科",oldFamily:"",jpName:"キヅタ属",note:"キヅタ（フユヅタ）、カナリーキヅタ（オカメヅタ）。ツタ（ナツヅタ）はParthenocissus"},
+  {latin:"Helianthus",read:"ヘリアンサス",family:"キク科",oldFamily:"",jpName:"ヒマワリ属",note:"キクイモ。キクイモモドキはHeliopsis"},
+  {latin:"Helichrysum",read:"ヘリクリサム",family:"キク科",oldFamily:"",jpName:"カレープラント",note:"ペーパーデージー"},
+  {latin:"Heliconia",read:"ヘリコニア",family:"オウムバナ科",oldFamily:"バショウ（オウムバナ）科",jpName:"オウムバナ属",note:"ヘリコニア、ヒメゴクラクチョウカ。ゴクラクチョウカはStrelitzia"},
+  {latin:"Heliopsis",read:"ヘリオプシス",family:"キク科",oldFamily:"",jpName:"キクイモモドキ属",note:"キクイモはHelianthus"},
+  {latin:"Helleborus",read:"ヘレボルス",family:"キンポウゲ科",oldFamily:"",jpName:"クリスマスローズ属",note:"レンテンローズ"},
+  {latin:"Hemerocallis",read:"ヘメロカリス",family:"ススキノキ科",oldFamily:"ヘメロカリス（ユリ）科",jpName:"ワスレグサ属",note:"ヤブカンゾウ、ユウスゲ。ワスレナグサはMyosotis"},
+  {latin:"Heuchera",read:"ヒューケラ",family:"ユキノシタ科",oldFamily:"",jpName:"ツボサンゴ属",note:""},
+  {latin:"Hibiscus",read:"ハイビスカス",family:"アオイ科",oldFamily:"",jpName:"フヨウ属",note:"ムクゲ、ブッソウゲ、ケナフ"},
+  {latin:"Hippeastrum",read:"ヒッペアストラム",family:"ヒガンバナ科",oldFamily:"",jpName:"アマリリス属",note:"ホンアマリリスはAmaryllis"},
+  {latin:"Hordeum",read:"ホルデューム",family:"イネ科",oldFamily:"",jpName:"オオムギ属",note:"ハダカムギ。コムギはTriticum、ライムギはSecale"},
+  {latin:"Hosta",read:"ホスタ",family:"キジカクシ科",oldFamily:"リュウゼツラン（ユリ）科",jpName:"ギボウシ属",note:"タマノカンザシ、トクダマ"},
+  {latin:"Hyacinthus",read:"ヒアシンサス",family:"キジカクシ科",oldFamily:"ヒアシンス（ユリ）科",jpName:"ヒアシンス属",note:""},
+  {latin:"Hydrangea",read:"ハイドランジア",family:"アジサイ科",oldFamily:"",jpName:"アジサイ属",note:"アメリカノリノキ、ノリウツギ、アマチャ"},
+  {latin:"Hypericum",read:"ヒペリカム",family:"オトギリソウ科",oldFamily:"",jpName:"オトギリソウ属",note:"キンシバイ、ビヨウヤナギ"},
+  {latin:"Iberis",read:"イベリス",family:"アブラナ科",oldFamily:"",jpName:"マガリバナ属",note:"キャンディタフト。ルリマガリバナはBrowallia"},
+  {latin:"Ilex",read:"イレックス",family:"モチノキ科",oldFamily:"",jpName:"モチノキ属",note:"イヌツゲ、セイヨウヒイラギ、タラヨウ、ソヨゴ。ヒイラギはOsmanthus"},
+  {latin:"Impatiens",read:"インパチエンス",family:"ツリフネソウ科",oldFamily:"",jpName:"ツリフネソウ属",note:"ホウセンカ"},
+  {latin:"Ipomoea",read:"イポメア",family:"ヒルガオ科",oldFamily:"",jpName:"サツマイモ属",note:"ヨルガオ、アサガオ、ルコウソウ、エンツァイ（ヨウサイ）。ユウガオはLagenaria"},
+  {latin:"Iris",read:"イリス",family:"アヤメ科",oldFamily:"",jpName:"アヤメ属",note:"ハナショウブ、カキツバタ、ジャーマンアイリス。ショウブはAcorus"},
+  {latin:"Ixora",read:"イクソラ",family:"アカネ科",oldFamily:"",jpName:"サンタンカ属",note:"クササンタンカはPentas"},
+  {latin:"Jasminum",read:"ジャスミナム",family:"モクセイ科",oldFamily:"",jpName:"ソケイ属",note:"オウバイ、キソケイ、マツリカ、ジャスミン"},
+  {latin:"Kalanchoe",read:"カランコエ",family:"ベンケイソウ科",oldFamily:"",jpName:"リュウキュウベンケイ属",note:"セイロンベンケイはBryophyllum"},
+  {latin:"Kalmia",read:"カルミア",family:"ツツジ科",oldFamily:"",jpName:"カルミア属",note:"ハナガサシャクナゲ"},
+  {latin:"Lactuca",read:"ラクツカ",family:"キク科",oldFamily:"",jpName:"チシャ属",note:"チシャ（レタス）"},
+  {latin:"Lampranthus",read:"ランプランサス",family:"ハマミズナ科",oldFamily:"",jpName:"マツバギク属",note:""},
+  {latin:"Lantana",read:"ランタナ",family:"クマツヅラ科",oldFamily:"",jpName:"シチヘンゲ属",note:""},
+  {latin:"Lathyrus",read:"ラティルス",family:"マメ科",oldFamily:"",jpName:"レンリソウ属",note:"スイートピー"},
+  {latin:"Lavandula",read:"ラバンデュラ",family:"シソ科",oldFamily:"",jpName:"ラベンダー属",note:""},
+  {latin:"Leptospermum",read:"レプトスペルマム",family:"フトモモ科",oldFamily:"",jpName:"ネズモドキ属",note:"ギョリュウバイ"},
+  {latin:"Leucanthemum",read:"レウカンセマム",family:"キク科",oldFamily:"",jpName:"フランスギク属",note:"シャスタデージー、フランスギク。以前はChrysanthemum"},
+  {latin:"Liatris",read:"リアトリス",family:"キク科",oldFamily:"",jpName:"キリンギク属",note:""},
+  {latin:"Lilium",read:"リリウム",family:"ユリ科",oldFamily:"",jpName:"ユリ属",note:"クロユリはFritillaria。ウバユリはCardiocrinum"},
+  {latin:"Limonium",read:"リモニウム",family:"イソマツ科",oldFamily:"",jpName:"イソマツ属",note:"スターチス、ハナハマサジ、ニワハナビ、ヒロハノハマサジ"},
+  {latin:"Linaria",read:"リナリア",family:"オオバコ科",oldFamily:"ゴマノハグサ科",jpName:"ウンラン属",note:"ヒメキンギョソウ、ホソバウンラン。キンギョソウはAntirrhinum"},
+  {latin:"Lobelia",read:"ロベリア",family:"キキョウ科",oldFamily:"キキョウ（ミゾカクシ）科",jpName:"ミゾカクシ属",note:"サワギキョウ、ルリチョウソウ"},
+  {latin:"Lobularia",read:"ロブラリア",family:"アブラナ科",oldFamily:"",jpName:"ニワナズナ属",note:"スイートアリッサム"},
+  {latin:"Lotus",read:"ロータス",family:"マメ科",oldFamily:"",jpName:"ミヤコグサ属",note:""},
+  {latin:"Luculia",read:"ルクリア",family:"アカネ科",oldFamily:"",jpName:"アッサムニオイザクラ",note:""},
+  {latin:"Lupinus",read:"ルピナス",family:"マメ科",oldFamily:"",jpName:"ハウチワマメ属",note:"ハウチワマメ（ノボリフジ）"},
+  {latin:"Lycoris",read:"リコリス",family:"ヒガンバナ科",oldFamily:"",jpName:"ヒガンバナ属",note:"キツネノカミソリ、ナツズイセン"},
+  {latin:"Lysimachia",read:"リシマキア",family:"サクラソウ科",oldFamily:"",jpName:"オカトラノオ属",note:"クサレダマ"},
+  {latin:"Lythrum",read:"リスルム",family:"ミソハギ科",oldFamily:"",jpName:"ミソハギ属",note:""},
+  {latin:"Magnolia",read:"マグノリア",family:"モクレン科",oldFamily:"",jpName:"モクレン属",note:"ホオノキ、コブシ、タムシバ、オガタマノキ"},
+  {latin:"Mandevilla",read:"マンデビラ",family:"キョウチクトウ科",oldFamily:"",jpName:"マンデビラ",note:"ディプラデニア。旧属名のDipladeniaの名でも流通"},
+  {latin:"Matricaria",read:"マトリカリア",family:"キク科",oldFamily:"",jpName:"コシカギク属",note:"ジャーマンカモミール。Tanacetumの園芸名としても使用"},
+  {latin:"Matthiola",read:"マッティオラ",family:"アブラナ科",oldFamily:"",jpName:"アラセイトウ属",note:"ストック（アラセイトウ）。ニオイアラセイトウはErysimum"},
+  {latin:"Melampodium",read:"メランポジウム",family:"キク科",oldFamily:"",jpName:"メランポジウム",note:""},
+  {latin:"Mentha",read:"メンタ",family:"シソ科",oldFamily:"",jpName:"ハッカ属",note:""},
+  {latin:"Metasequoia",read:"メタセコイア",family:"ヒノキ科",oldFamily:"スギ科",jpName:"メタセコイア属",note:"アケボノスギ"},
+  {latin:"Mimosa",read:"ミモザ",family:"マメ科",oldFamily:"",jpName:"オジギソウ属",note:""},
+  {latin:"Miscanthus",read:"ミスカンサス",family:"イネ科",oldFamily:"",jpName:"ススキ属",note:"Ophiopogon やLiriopeがミスカンサスの名で流通する"},
+  {latin:"Moluccella",read:"モルセラ",family:"シソ科",oldFamily:"",jpName:"カイガラソウ属",note:"カイガラソウ（カイガラサルビア）"},
+  {latin:"Monstera",read:"モンステラ",family:"サトイモ科",oldFamily:"",jpName:"ホウライショウ属",note:"マドカズラ"},
+  {latin:"Muscari",read:"ムスカリ",family:"キジカクシ科",oldFamily:"ヒアシンス（ユリ）科",jpName:"ムスカリ属",note:""},
+  {latin:"Myosotis",read:"ミオソティス",family:"ムラサキ科",oldFamily:"",jpName:"ワスレナグサ属",note:"エゾムラサキ、ノハラワスレナグサ、シンワスレナグサ"},
+  {latin:"Nandina",read:"ナンディナ",family:"メギ科",oldFamily:"",jpName:"ナンテン属",note:""},
+  {latin:"Narcissus",read:"ナルシッサス",family:"ヒガンバナ科",oldFamily:"",jpName:"スイセン属",note:""},
+  {latin:"Nelumbo",read:"ネルンボ",family:"ハス科",oldFamily:"",jpName:"ハス属",note:""},
+  {latin:"Nemesia",read:"ネメシア",family:"ゴマノハグサ科",oldFamily:"",jpName:"アフリカウンラン属",note:""},
+  {latin:"Nemophila",read:"ネモフィラ",family:"ムラサキ科",oldFamily:"ハゼリソウ科",jpName:"ルリカラクサ属",note:""},
+  {latin:"Nephrolepis",read:"ネフロレピス",family:"タマシダ科",oldFamily:"タマシダ（シノブ）科",jpName:"タマシダ属",note:""},
+  {latin:"Nerine",read:"ネリネ",family:"ヒガンバナ科",oldFamily:"",jpName:"ダイヤモンドリリー",note:""},
+  {latin:"Nierembergia",read:"ニーレンベルギア",family:"ナス科",oldFamily:"",jpName:"ギンパイソウ属",note:""},
+  {latin:"Nigella",read:"ニゲラ",family:"キンポウゲ科",oldFamily:"",jpName:"クロタネソウ属",note:""},
+  {latin:"Nymphaea",read:"ニンファエア",family:"スイレン科",oldFamily:"",jpName:"スイレン属",note:"ヒツジグサ"},
+  {latin:"Ocimum",read:"オシマム",family:"シソ科",oldFamily:"",jpName:"メボウキ属",note:"バジル（メボウキ）"},
+  {latin:"Oenothera",read:"エノテラ",family:"アカバナ科",oldFamily:"",jpName:"マツヨイグサ属",note:"ツキミソウ"},
+  {latin:"Olea",read:"オレア",family:"モクセイ科",oldFamily:"",jpName:"オリーブ属",note:""},
+  {latin:"Ophiopogon",read:"オフィオポゴン",family:"キジカクシ科",oldFamily:"スズラン（ユリ）科",jpName:"ジャノヒゲ属",note:"ノシラン"},
+  {latin:"Ornithogalum",read:"オーニソガラム",family:"キジカクシ科",oldFamily:"ヒアシンス（ユリ）科",jpName:"オオアマナ属",note:"オーニソガラム。アマナはAmana"},
+  {latin:"Oryza",read:"オリザ",family:"イネ科",oldFamily:"",jpName:"イネ属",note:""},
+  {latin:"Osteospermum",read:"オステオスペルマム",family:"キク科",oldFamily:"",jpName:"オステオスペルマム",note:"アフリカンデージー"},
+  {latin:"Oxalis",read:"オキザリス",family:"カタバミ科",oldFamily:"",jpName:"カタバミ属",note:""},
+  {latin:"Pachira",read:"パキラ",family:"アオイ科",oldFamily:"パンヤ科",jpName:"パキラ属",note:"カイエンナット"},
+  {latin:"Paeonia",read:"ペオニア",family:"ボタン科",oldFamily:"",jpName:"ボタン属",note:"シャクヤク、ヤマシャクヤク"},
+  {latin:"Papaver",read:"パパベル",family:"ケシ科",oldFamily:"",jpName:"ケシ属",note:"アイスランドポピー、シャーレーポピー"},
+  {latin:"Passiflora",read:"パッシフローラ",family:"トケイソウ科",oldFamily:"",jpName:"トケイソウ属",note:"クダモノトケイソウ（パッションフルーツ）"},
+  {latin:"Pelargonium",read:"ペラルゴニウム",family:"フウロソウ科",oldFamily:"",jpName:"テンジクアオイ属",note:"センテッドゼラニウム、ゼラニウム"},
+  {latin:"Pentas",read:"ペンタス",family:"アカネ科",oldFamily:"",jpName:"クササンタンカ属",note:"サンタンカはIxora"},
+  {latin:"Peperomia",read:"ペペロミア",family:"コショウ科",oldFamily:"",jpName:"サダソウ属",note:"シマアオイソウ"},
+  {latin:"Pericallis",read:"ペリカリス",family:"キク科",oldFamily:"",jpName:"フウキギク属",note:"シネラリア（サイネリア）。旧属名のCinerariaの名で流通"},
+  {latin:"Perilla",read:"ペリラ",family:"シソ科",oldFamily:"",jpName:"シソ属",note:"エゴマ"},
+  {latin:"Petunia",read:"ペチュニア",family:"ナス科",oldFamily:"",jpName:"ツクバネアサガオ属",note:""},
+  {latin:"Phalaenopsis",read:"ファレノプシス",family:"ラン科",oldFamily:"",jpName:"コチョウラン属",note:""},
+  {latin:"Philadelphus",read:"フィラデルフス",family:"アジサイ科",oldFamily:"",jpName:"バイカウツギ属",note:"ウツギはDeutzia"},
+  {latin:"Philodendron",read:"フィロデンドロン",family:"サトイモ科",oldFamily:"",jpName:"ビロードカズラ属",note:"センニンカズラ、ホテイカズラ、ヤッコカズラ"},
+  {latin:"Phlox",read:"フロックス",family:"ハナシノブ科",oldFamily:"",jpName:"クサキョウチクトウ属",note:"クサキョウチクトウ（オイランソウ）、シバザクラ"},
+  {latin:"Phoenix",read:"フェニックス",family:"ヤシ科",oldFamily:"",jpName:"ナツメヤシ属",note:"ナツメヤシ（デーツ）、シンノウヤシ、カナリーヤシ、ソテツジュロ"},
+  {latin:"Phormium",read:"フォルミウム",family:"ススキノキ科",oldFamily:"フォルミウム（リュウゼツラン）科",jpName:"マオラン属",note:"ニューサイラン"},
+  {latin:"Phyla",read:"フィラ",family:"クマツヅラ科",oldFamily:"",jpName:"イワダレソウ属",note:""},
+  {latin:"Physalis",read:"フィサリス",family:"ナス科",oldFamily:"",jpName:"センナリホオズキ属",note:"センナリホオズキ、ホオズキ"},
+  {latin:"Physocarpus",read:"フィソカルプス",family:"バラ科",oldFamily:"",jpName:"テマリシモツケ属",note:"シモツケはSpiraea"},
+  {latin:"Physostegia",read:"フィソステギア",family:"シソ科",oldFamily:"",jpName:"ハナトラノオ属",note:"カクトラノオ（ハナトラノオ）"},
+  {latin:"Pieris",read:"ピエリス",family:"ツツジ科",oldFamily:"",jpName:"アセビ属",note:""},
+  {latin:"Pinus",read:"ピヌス",family:"マツ科",oldFamily:"",jpName:"マツ属",note:"アカマツ、クロマツ"},
+  {latin:"Pittosporum",read:"ピットスポラム",family:"トベラ科",oldFamily:"",jpName:"トベラ属",note:"コヤスノキ"},
+  {latin:"Platycodon",read:"プラチコドン",family:"キキョウ科",oldFamily:"",jpName:"キキョウ属",note:""},
+  {latin:"Plectranthus",read:"プレクトランサス",family:"シソ科",oldFamily:"",jpName:"サヤバナ属",note:"キンランジソ（コリウス）。園芸名としてColeusの名を使用"},
+  {latin:"Polygonatum",read:"ポリゴナツム",family:"キジカクシ科",oldFamily:"スズラン（ユリ）科",jpName:"アマドコロ属",note:"ナルコユリ、ワニグチソウ、ヒメイズイ"},
+  {latin:"Portulaca",read:"ポーチュラカ",family:"スベリヒユ科",oldFamily:"",jpName:"スベリヒユ属",note:"マツバボタン"},
+  {latin:"Primula",read:"プリムラ",family:"サクラソウ科",oldFamily:"",jpName:"サクラソウ属",note:"クリンソウ、カッコソウ"},
+  {latin:"Prunus",read:"プルヌス",family:"バラ科",oldFamily:"",jpName:"スモモ属",note:"セイヨウスモモ（プルーン）。Amygdalus、Armeniaca、Cerasusなどが分けられた"},
+  {latin:"Pyracantha",read:"ピラカンサ",family:"バラ科",oldFamily:"",jpName:"タチバナモドキ属",note:"トキワサンザシ。サンザシはCrataegus"},
+  {latin:"Ranunculus",read:"ラナンキュラス",family:"キンポウゲ科",oldFamily:"",jpName:"キンポウゲ属",note:"ハナキンポウゲ、ハイキンポウゲ"},
+  {latin:"Rhodanthe",read:"ローダンセ",family:"キク科",oldFamily:"",jpName:"ハナカンザシ",note:"ペーパーカスケード。Helipterum、Acrocliniumを含む"},
+  {latin:"Rhododendron",read:"ロードデンドロン",family:"ツツジ科",oldFamily:"",jpName:"ツツジ属",note:"シャクナゲ、サツキ"},
+  {latin:"Rhodohypoxis",read:"ロードヒポキシス",family:"キンバイザサ科",oldFamily:"",jpName:"アッツザクラ",note:""},
+  {latin:"Rosa",read:"ロサ",family:"バラ科",oldFamily:"",jpName:"バラ属",note:"ハマナス"},
+  {latin:"Rosmarinus",read:"ロスマリヌス",family:"シソ科",oldFamily:"",jpName:"マンネンロウ属",note:"マンネンロウ（ローズマリー）"},
+  {latin:"Rubus",read:"ルブス",family:"バラ科",oldFamily:"",jpName:"キイチゴ属",note:"ラズベリー、ブラックベリー"},
+  {latin:"Rudbeckia",read:"ルドベキア",family:"キク科",oldFamily:"",jpName:"オオハンゴンソウ属",note:"グロリオサデージー。ハンゴンソウはSenecio"},
+  {latin:"Rumohra",read:"ルモーラ",family:"オシダ科",oldFamily:"",jpName:"レザーリーフファーン",note:""},
+  {latin:"Saintpaulia",read:"セントポーリア",family:"イワタバコ科",oldFamily:"",jpName:"アフリカスミレ属",note:""},
+  {latin:"Salix",read:"サリックス",family:"ヤナギ科",oldFamily:"",jpName:"ヤナギ属",note:"ハコヤナギはPopulus"},
+  {latin:"Salvia",read:"サルビア",family:"シソ科",oldFamily:"",jpName:"アキギリ属",note:"アキノタムラソウ、セージ"},
+  {latin:"Sandersonia",read:"サンダーソニア",family:"イヌサフラン科",oldFamily:"",jpName:"サンダーソニア",note:""},
+  {latin:"Sanguisorba",read:"サンギソルバ",family:"バラ科",oldFamily:"",jpName:"ワレモコウ属",note:"カライトソウ"},
+  {latin:"Sansevieria",read:"サンセベリア",family:"キジカクシ科",oldFamily:"リュウケツジュ（リュウゼツラン）科",jpName:"チトセラン属",note:"チトセラン（トラノオ）"},
+  {latin:"Sarcandra",read:"サルカンドラ",family:"センリョウ科",oldFamily:"",jpName:"センリョウ属",note:"センリョウ。マンリョウはArdisia"},
+  {latin:"Saxifraga",read:"サキシフラガ",family:"ユキノシタ科",oldFamily:"",jpName:"ユキノシタ属",note:"ダイモンジソウ、クモマグサ"},
+  {latin:"Scabiosa",read:"スカビオサ",family:"スイカズラ科",oldFamily:"マツムシソウ科",jpName:"マツムシソウ属",note:""},
+  {latin:"Schefflera",read:"シェフレラ",family:"ウコギ科",oldFamily:"",jpName:"フカノキ属",note:"ホンコンカポック、モミジバアラリア。カポックはCeiba"},
+  {latin:"Schlumbergera",read:"シュルンベルゲラ",family:"サボテン科",oldFamily:"",jpName:"シャコバサボテン属",note:"クリスマスカクタス、カニバサボテン"},
+  {latin:"Scilla",read:"シラー",family:"キジカクシ科",oldFamily:"ヒアシンス（ユリ）科",jpName:"オオツルボ属",note:""},
+  {latin:"Sedum",read:"セダム",family:"ベンケイソウ科",oldFamily:"",jpName:"マンネングサ属",note:"ベンケイソウ、ミセバヤ"},
+  {latin:"Senecio",read:"セネシオ",family:"キク科",oldFamily:"",jpName:"ノボロギク属",note:"シロタエギク、ハンゴンソウ。オオハンゴンソウはRudbeckia"},
+  {latin:"Silene",read:"シレネ",family:"ナデシコ科",oldFamily:"",jpName:"マンテマ属",note:"ムシトリナデシコ"},
+  {latin:"Skimmia",read:"シキミア",family:"ミカン科",oldFamily:"",jpName:"ミヤマシキミ属",note:"シキミはIllicium"},
+  {latin:"Smilax",read:"スマイラックス",family:"サルトリイバラ科",oldFamily:"シオデ科",jpName:"サルトリイバラ属",note:"サルトリイバラ（サンキライ）。Asparagus asparagoidesがスマイラックスの名で流通"},
+  {latin:"Solanum",read:"ソラナム",family:"ナス科",oldFamily:"",jpName:"ナス属",note:"トマト、ジャガイモ、ツノナス（フォックスフェイス）、フユサンゴ"},
+  {latin:"Solidago",read:"ソリダゴ",family:"キク科",oldFamily:"",jpName:"アキノキリンソウ属",note:"セイタカアワダチソウ"},
+  {latin:"Spathiphyllum",read:"スパティフィラム",family:"サトイモ科",oldFamily:"",jpName:"ササウチワ属",note:"スパティフィラム"},
+  {latin:"Spiraea",read:"スピラエア",family:"バラ科",oldFamily:"",jpName:"シモツケ属",note:"ユキヤナギ、コデマリ、シジミバナ。テマリシモツケはPhysocarpus"},
+  {latin:"Stephanotis",read:"ステファノティス",family:"キョウチクトウ科",oldFamily:"ガガイモ科",jpName:"アフリカシタキヅル属",note:"マダガスカルジャスミン。Marsdeniaとする見解もある"},
+  {latin:"Strelitzia",read:"ストレリチア",family:"ゴクラクチョウカ科",oldFamily:"",jpName:"ゴクラクチョウカ属",note:""},
+  {latin:"Sutera",read:"ステラ",family:"ゴマノハグサ科",oldFamily:"",jpName:"バコパ",note:"園芸名として別属Bacopaの名を使用"},
+  {latin:"Syringa",read:"シリンガ",family:"モクセイ科",oldFamily:"",jpName:"ハシドイ属",note:"ムラサキハシドイ（ライラック、リラ）"},
+  {latin:"Tagetes",read:"タゲテス",family:"キク科",oldFamily:"",jpName:"コウオウソウ属",note:"マリーゴールド（マリゴールド）"},
+  {latin:"Tanacetum",read:"タナセタム",family:"キク科",oldFamily:"",jpName:"ヨモギギク属",note:"ナツシロギク、ジョチュウギク、タンジー"},
+  {latin:"Thymophylla",read:"ティモフィラ",family:"キク科",oldFamily:"",jpName:"カラクサシュンギク属",note:"ダールベルグデージー"},
+  {latin:"Tillandsia",read:"チランジア",family:"パイナップル科",oldFamily:"",jpName:"サルオガセモドキ属",note:"ハナアナナス、エアプランツ"},
+  {latin:"Torenia",read:"トレニア",family:"アゼナ科",oldFamily:"ゴマノハグサ科",jpName:"ハナウリクサ属",note:"トレニア"},
+  {latin:"Trachelospermum",read:"トラケロスペルマム",family:"キョウチクトウ科",oldFamily:"",jpName:"テイカカズラ属",note:"ハツユキカズラ"},
+  {latin:"Tricyrtis",read:"トリキルティス",family:"ユリ科",oldFamily:"",jpName:"ホトトギス属",note:""},
+  {latin:"Trifolium",read:"トリフォリウム",family:"マメ科",oldFamily:"",jpName:"シャジクソウ属",note:"シロツメクサ（クローバー）、ムラサキツメクサ（アカツメクサ、レッドクローバー）"},
+  {latin:"Tropaeolum",read:"トロパエオラム",family:"ノウゼンハレン科",oldFamily:"",jpName:"ノウゼンハレン属",note:"ノウゼンハレン（キンレンカ、ナスタチウム）"},
+  {latin:"Tulipa",read:"ツリパ",family:"ユリ科",oldFamily:"",jpName:"チューリップ属",note:"アマナは現在はAmana"},
+  {latin:"Tweedia",read:"トゥイーディア",family:"キョウチクトウ科",oldFamily:"ガガイモ科",jpName:"ルリトウワタ",note:"ブルースター、オキシペタラム。Oxypetalumとする見解もある"},
+  {latin:"Vaccinium",read:"ウァッキニウム",family:"ツツジ科",oldFamily:"",jpName:"スノキ属",note:"コケモモ、ブルーベリー"},
+  {latin:"Vanda",read:"バンダ",family:"ラン科",oldFamily:"",jpName:"ヒスイラン属",note:""},
+  {latin:"Verbena",read:"バーベナ",family:"クマツヅラ科",oldFamily:"",jpName:"クマツヅラ属",note:"シュッコンバーベナ、サンジャクバーベナ（ヤナギハナガサ）"},
+  {latin:"Veronica",read:"ベロニカ",family:"オオバコ科",oldFamily:"ゴマノハグサ科",jpName:"クワガタソウ属",note:"オオイヌノフグリ、ルリトラノオ、トウテイラン。クガイソウはVeronicastrum"},
+  {latin:"Viburnum",read:"ビブルナム",family:"ガマズミ科",oldFamily:"スイカズラ（レンプクソウ）科",jpName:"ガマズミ属",note:"サンゴジュ、ヤブデマリ、ハクサンボク、ゴモジュ、カンボク"},
+  {latin:"Vinca",read:"ビンカ",family:"キョウチクトウ科",oldFamily:"",jpName:"ツルニチニチソウ属",note:"ニチニチソウ（Catharanthus）の園芸名としても使用"},
+  {latin:"Viola",read:"ビオラ",family:"スミレ科",oldFamily:"",jpName:"スミレ属",note:"パンジー"},
+  {latin:"Vitis",read:"ビティス",family:"ブドウ科",oldFamily:"",jpName:"ブドウ属",note:"ヤマブドウ、エビヅル。ノブドウはAmpelopsis"},
+  {latin:"Weigela",read:"ウェイゲラ",family:"スイカズラ科",oldFamily:"",jpName:"タニウツギ属",note:"ハコネウツギ"},
+  {latin:"Wisteria",read:"ウィステリア",family:"マメ科",oldFamily:"",jpName:"フジ属",note:"フジ（ノダフジ）、ヤマフジ（カピタン）、ナツフジ"},
+  {latin:"Yucca",read:"ユッカ",family:"キジカクシ科",oldFamily:"リュウゼツラン科",jpName:"イトラン属",note:"キミガヨラン。「青年の木」は不可"},
+  {latin:"Zantedeschia",read:"ザンテデスキア",family:"サトイモ科",oldFamily:"",jpName:"オランダカイウ属",note:"カラー。園芸名として別属Callaの名を使用"},
+  {latin:"Zephyranthes",read:"ゼフィランサス",family:"ヒガンバナ科",oldFamily:"",jpName:"サフランモドキ属",note:"タマスダレ。キバナタマスダレはSternbergia"},
+  {latin:"Zinnia",read:"ジニア",family:"キク科",oldFamily:"",jpName:"ヒャクニチソウ属",note:""},
+];
+
+// ========== STATE ==========
+let state = {
+  unlocked: {},
+  mastery: {},
+  location: {},
+  history: [],
+  accuracy: {},   // latin -> {correct: N, total: N}
+  todayCount: 0,
+  todayDate: '',
+  photoCache: {},  // latin -> CloudinaryのURL or dataUrl
+};
+// 写真はIndexedDB（大容量）
+let photoDB = null;
+let currentGenus = null;
+let zukanFilter = 'all';
+let zukanSearch = '';
+let selectedMode = 'latin2all';
+let selectedTarget = 'all';
+let quizState = { questions:[], current:0, score:0, answered:false, startTime:0 };
+
+// ========== INDEXED DB（写真専用） ==========
+async function openPhotoDB() {
+  return new Promise((res) => {  // rejectしない
+    try {
+      const req = indexedDB.open('hanazukan_photos', 1);
+      req.onupgradeneeded = e => e.target.result.createObjectStore('photos');
+      req.onsuccess = e => { photoDB = e.target.result; res(); };
+      req.onerror = () => { console.warn('IndexedDB開けず、写真機能は無効'); res(); };
+    } catch(e) { console.warn('IndexedDB非対応'); res(); }
+  });
+}
+function dbGetPhotos(latin) {
+  if (!photoDB) return Promise.resolve([]);
+  return new Promise(resolve => {
+    try {
+      const req = photoDB.transaction('photos','readonly').objectStore('photos').get(latin);
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => resolve([]);
+    } catch(e) { resolve([]); }
+  });
+}
+function dbSetPhotos(latin, photos) {
+  if (!photoDB) return Promise.resolve();
+  return new Promise(resolve => {
+    try {
+      const tx = photoDB.transaction('photos','readwrite');
+      tx.objectStore('photos').put(photos, latin);
+      tx.oncomplete = resolve;
+      tx.onerror = resolve;
+    } catch(e) { resolve(); }
+  });
+}
+
+// ========== FIREBASE / CLOUDINARY 設定 ==========
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyAxDEz4W5ewZwnVwGQyM487VSqB1uq0cxE",
+  authDomain: "hanazukan-6edc2.firebaseapp.com",
+  projectId: "hanazukan-6edc2",
+  storageBucket: "hanazukan-6edc2.firebasestorage.app",
+  messagingSenderId: "120701267181",
+  appId: "1:120701267181:web:060e37b0c8ebf6e9bbb0e4"
+};
+const CLOUDINARY_CLOUD = 'dak9pygss';
+const CLOUDINARY_PRESET = 'hanazukan';
+
+let firebaseAuth = null, firebaseDb = null, currentUser = null;
+
+function updateAuthUI(user) {
+  const el = document.getElementById('saveStatus');
+  if (!el) return;
+  if (user) {
+    el.textContent = '☁️ ' + user.displayName + ' でログイン中';
+  } else {
+    el.innerHTML = '<button onclick="signIn()" style="background:var(--accent);color:#0f1a14;border:none;border-radius:6px;padding:5px 12px;font-size:11px;cursor:pointer;font-family:inherit">Googleでログイン</button>';
+  }
+}
+
+async function signIn() {
+  if (!firebaseAuth) { showToast('クラウド未接続です'); return; }
+  try {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    await firebaseAuth.signInWithPopup(provider);
+  } catch(e) {
+    showToast('ログインに失敗しました');
+  }
+}
+
+async function initFirebase() {
+  // Firebase SDKがscriptタグで読み込まれているか確認
+  if (typeof firebase === 'undefined') return false;
+  try {
+    firebase.initializeApp(FIREBASE_CONFIG);
+    firebaseAuth = firebase.auth();
+    firebaseDb = firebase.firestore();
+    firebaseAuth.onAuthStateChanged(async user => {
+      currentUser = user;
+      updateAuthUI(user);
+      if (user) {
+        await loadFromFirestore();
+      }
+    });
+    return true;
+  } catch(e) {
+    return false;
+  }
+}
+
+// ========== FIRESTORE 保存・読み込み ==========
+async function saveToFirestore() {
+  if (!currentUser || !firebaseDb) {
+    localStorage.setItem('hanazukan_progress', JSON.stringify({
+      unlocked: state.unlocked,
+      mastery: state.mastery,
+      location: state.location,
+      history: state.history,
+      accuracy: state.accuracy,
+      todayCount: state.todayCount,
+      todayDate: state.todayDate,
+    }));
+    const el = document.getElementById('saveStatus');
+    if (el && el.tagName !== 'BUTTON') el.textContent = '💾 ローカル保存済み（未ログイン）';
+    return;
+  }
+  try {
+    await firebaseDb.collection('users').doc(currentUser.uid).set({
+      unlocked: state.unlocked,
+      mastery: state.mastery,
+      location: state.location,
+      history: state.history.slice(0, 20),
+      accuracy: state.accuracy,
+      todayCount: state.todayCount,
+      todayDate: state.todayDate,
+      updatedAt: new Date().toISOString(),
+    });
+    document.getElementById('saveStatus').textContent = '☁️ ' + new Date().toLocaleTimeString('ja-JP') + ' 保存済み';
+  } catch(e) {
+    document.getElementById('saveStatus').textContent = '⚠️ 保存エラー';
+  }
+}
+
+async function loadFromFirestore() {
+  if (!currentUser || !firebaseDb) return;
+  try {
+    const snap = await firebaseDb.collection('users').doc(currentUser.uid).get();
+    if (snap.exists) {
+      Object.assign(state, snap.data());
+      // photoCacheをIndexedDBから再構築
+      if (photoDB) {
+        for (const g of GENERA) {
+          const p = await dbGetPhotos(g.latin);
+          if (p.length > 0) state.photoCache[g.latin] = p[0].dataUrl;
+        }
+      }
+      renderHome(); renderZukan(); renderStats();
+      showToast('クラウドから読み込みました ☁️');
+    } else {
+      // Firestoreにデータなし→localStorageから移行
+      const local = localStorage.getItem('hanazukan_progress');
+      if (local) {
+        try {
+          Object.assign(state, JSON.parse(local));
+          await saveToFirestore();
+          showToast('ローカルデータをクラウドに移行しました ☁️');
+        } catch(e) {}
+      }
+    }
+  } catch(e) {}
+}
+
+async function saveProgress() {
+  await saveToFirestore();
+}
+
+// ========== CLOUDINARY 写真アップロード ==========
+async function uploadToCloudinary(file) {
+  const compressed = await compressImage(file, 800, 0.75);
+  const res = await fetch(compressed);
+  const blob = await res.blob();
+  const formData = new FormData();
+  formData.append('file', blob);
+  formData.append('upload_preset', CLOUDINARY_PRESET);
+  formData.append('folder', 'hanazukan');
+  const r = await fetch('https://api.cloudinary.com/v1_1/' + CLOUDINARY_CLOUD + '/image/upload', {
+    method: 'POST', body: formData,
+  });
+  const data = await r.json();
+  if (data.secure_url) return data.secure_url;
+  throw new Error('Cloudinary upload failed');
+}
+
+// ========== INIT ==========
+async function init() {
+  try { await openPhotoDB(); } catch(e) { console.warn('DB init failed', e); }
+
+  // localStorageからとりあえず読み込み（Firebase読み込み前の暫定）
+  const local = localStorage.getItem('hanazukan_progress');
+  if (local) try { Object.assign(state, JSON.parse(local)); } catch(e) {}
+
+  const today = new Date().toDateString();
+  if (state.todayDate !== today) { state.todayCount = 0; state.todayDate = today; }
+
+  renderHome();
+  renderZukan();
+  renderStats();
+
+  // IndexedDBからphotoCacheを再構築
+  if (photoDB) {
+    (async () => {
+      for (const g of GENERA) {
+        const p = await dbGetPhotos(g.latin);
+        if (p.length > 0) state.photoCache[g.latin] = p[0].dataUrl;
+      }
+      renderZukan();
+      renderHome();
+    })();
+  }
+
+  // Firebase初期化（GitHub Pages上でのみ動作）
+  try {
+    await initFirebase();
+  } catch(e) {
+    // Artifact環境では失敗するが無視
+  }
+}
+
+// ========== HOME ==========
+function renderHome() {
+  const unlocked = Object.keys(state.unlocked).length;
+  const mastered = Object.values(state.mastery).filter(v => v >= 3).length;
+  // 写真登録数はIndexedDBから同期的に取れないので近似（unlockedで代用）
+  document.getElementById('unlockedCount').textContent = unlocked;
+  document.getElementById('masteredCount').textContent = mastered + ' 属';
+  document.getElementById('todayCount').textContent = state.todayCount + ' 問';
+  const pct = unlocked / 300;
+  document.getElementById('ringFill').style.strokeDashoffset = 289 - 289 * pct;
+  // 写真数を非同期で更新
+  document.getElementById('photoCount').textContent = countPhotos() + ' 属';
+}
+function countPhotos() {
+  return Object.keys(state.photoCache).length;
+}
+
+function selectMode(btn) {
+  document.querySelectorAll('#modeGrid .mode-btn').forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+  selectedMode = btn.dataset.mode;
+}
+function selectTarget(btn) {
+  document.querySelectorAll('#targetGrid .mode-btn').forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+  selectedTarget = btn.dataset.target;
+}
+
+// ========== WIKI SEARCH KEYS ==========
+const WIKI_KEYS = {
+  "Abelia": "ツクバネウツギ","Abies": "シラビソ","Abutilon": "ウキツリボク","Acacia": "フサアカシア","Acer": "イロハモミジ","Achillea": "ヤロー","Acorus": "セキショウ","Actinotus": "フランネルフラワー","Adiantum": "クジャクシダ","Adonis": "フクジュソウ","Agapanthus": "ムラサキクンシラン","Ageratum": "カッコウアザミ","Ajuga": "アジュガ","Alchemilla": "レディースマントル","Allium": "タマネギ","Aloe": "キダチアロエ","Alstroemeria": "ユリズイセン","Alternanthera": "アカバセンニチコウ","Alyssum": "アレチナズナ","Amaranthus": "ハゲイトウ","Ammi": "ドクゼリモドキ","Amygdalus": "アーモンド","Anemone": "ニリンソウ","Angelonia": "アンゲロンソウ","Anigozanthos": "カンガルーポー","Anthurium": "ベニウチワ","Antirrhinum": "キンギョソウ","Aquilegia": "オダマキ","Arctotis": "ジャノメギク","Ardisia": "マンリョウ","Arenaria": "ノミノツヅリ","Argyranthemum": "マーガレット","Armeniaca": "ウメ","Armeria": "ハマカンザシ","Asclepias": "トウワタ","Asparagus": "アスパラガス","Asplenium": "オオタニワタリ","Aster": "クジャクアスター","Astilbe": "アワモリショウマ","Astrantia": "アストランチア","Aucuba": "アオキ","Bassia": "ホウキギ","Begonia": "シュウカイドウ","Bellis": "ヒナギク","Bidens": "ウインターコスモス","Boronia": "ボロニア","Bougainvillea": "イカダカズラ","Brassica": "ハボタン","Buddleja": "フジウツギ","Bupleurum": "ツキヌキサイコ","Caladium": "ヒメハニシキ","Calendula": "キンセンカ","Calibrachoa": "カリブラコア","Callistephus": "エゾギク","Calluna": "ギョリュウモドキ","Camellia": "サザンカ","Campanula": "フウリンソウ","Canna": "ダンドク","Capsicum": "ピーマン","Carex": "コウボウムギ","Carthamus": "ベニバナ","Catharanthus": "ニチニチソウ","Cattleya": "カトレヤ","Celosia": "ケイトウ","Centaurea": "ヤグルマギク","Cerasus": "セイヨウミザクラ","Chaenomeles": "クサボケ","Chamaecyparis": "サワラ","Chamaedorea": "テーブルヤシ","Chamelaucium": "ワックスフラワー","Chlorophytum": "オリヅルラン","Chrysanthemum": "キク","Citrullus": "スイカ","Citrus": "ダイダイ","Clematis": "テッセン","Codiaeum": "ヘンヨウボク","Consolida": "チドリソウ","Convallaria": "スズラン","Cordyline": "ニオイシュロラン","Coreopsis": "ハルシャギク","Cornus": "ヤマボウシ","Cosmos": "キバナコスモス","Cotinus": "スモークツリー","Craspedia": "クラスペディア","Crassula": "花月","Crocus": "サフラン","Crossandra": "ジョウゴバナ","Crowea": "サザンクロス","Cucumis": "メロン","Cucurbita": "ズッキーニ","Cuphea": "メキシコハナヤナギ","Cupressus": "イトスギ","Curcuma": "ウコン","Cycas": "ソテツ","Cyclamen": "シクラメン","Cymbidium": "カンラン","Cytisus": "エニシダ","Dahlia": "ダリア","Daphne": "フジモドキ","Delphinium": "オオヒエンソウ","Dendrobium": "セッコク","Deutzia": "ウツギ","Dianthus": "セキチク","Dieffenbachia": "カスリソウ","Digitalis": "キツネノテブクロ","Dimorphotheca": "アフリカキンセンカ","Dracaena": "ニオイセンネンボク","Duranta": "タイワンレンギョウ","Echinops": "ルリタマアザミ","Enkianthus": "サラサドウダン","Epipremnum": "オウゴンカズラ","Equisetum": "スギナ","Erica": "エリカ","Eryngium": "マツカサアザミ","Eucalyptus": "ユーカリノキ","Eupatorium": "フジバカマ","Euphorbia": "ポインセチア","Euryops": "ゴールデンクラッカー","Eustoma": "トルコギキョウ","Evolvulus": "エボルブルス","Felicia": "ルリヒナギク","Ficus": "インドゴムノキ","Forsythia": "レンギョウ","Fragaria": "オランダイチゴ","Fraxinus": "トネリコ","Freesia": "フリージア","Fuchsia": "フクシア","Gaillardia": "オオテンニンギク","Gardenia": "クチナシ","Gaultheria": "アカモノ","Gazania": "クンショウギク","Gentiana": "リンドウ","Geranium": "ゲンノショウコ","Gerbera": "ガーベラ","Gilia": "アメリカハナシノブ","Gladiolus": "グラジオラス","Glandularia": "バーベナ","Glechoma": "カキドオシ","Gloriosa": "キツネユリ","Glycine": "ダイズ","Gomphrena": "センニチコウ","Gossypium": "ワタ","Guzmania": "グズマニア","Gypsophila": "シュッコンカスミソウ","Hedera": "キヅタ","Helianthus": "キクイモ","Helichrysum": "ペーパーデージー","Heliconia": "ヘリコニア","Heliopsis": "キクイモモドキ","Helleborus": "レンテンローズ","Hemerocallis": "ヤブカンゾウ","Heuchera": "ツボサンゴ","Hibiscus": "ムクゲ","Hippeastrum": "アマリリス","Hordeum": "ハダカムギ","Hosta": "タマノカンザシ","Hyacinthus": "ヒアシンス","Hydrangea": "アメリカノリノキ","Hypericum": "キンシバイ","Iberis": "キャンディタフト","Ilex": "イヌツゲ","Impatiens": "ホウセンカ","Ipomoea": "ヨルガオ","Iris": "ハナショウブ","Ixora": "サンタンカ","Jasminum": "オウバイ","Kalanchoe": "リュウキュウベンケイ","Kalmia": "ハナガサシャクナゲ","Lactuca": "チシャ","Lampranthus": "マツバギク","Lantana": "シチヘンゲ","Lathyrus": "スイートピー","Lavandula": "ラベンダー","Leptospermum": "ギョリュウバイ","Leucanthemum": "シャスタデージー","Liatris": "キリンギク","Lilium": "ユリ","Limonium": "スターチス","Linaria": "ヒメキンギョソウ","Lobelia": "サワギキョウ","Lobularia": "スイートアリッサム","Lotus": "ミヤコグサ","Luculia": "アッサムニオイザクラ","Lupinus": "ハウチワマメ","Lycoris": "キツネノカミソリ","Lysimachia": "クサレダマ","Lythrum": "ミソハギ","Magnolia": "ホオノキ","Mandevilla": "ディプラデニア","Matricaria": "ジャーマンカモミール","Matthiola": "ストック","Melampodium": "メランポジウム","Mentha": "ハッカ","Metasequoia": "アケボノスギ","Mimosa": "オジギソウ","Miscanthus": "ススキ","Moluccella": "カイガラソウ","Monstera": "マドカズラ","Muscari": "ムスカリ","Myosotis": "エゾムラサキ","Nandina": "ナンテン","Narcissus": "スイセン","Nelumbo": "ハス","Nemesia": "アフリカウンラン","Nemophila": "ルリカラクサ","Nephrolepis": "タマシダ","Nerine": "ダイヤモンドリリー","Nierembergia": "ギンパイソウ","Nigella": "クロタネソウ","Nymphaea": "ヒツジグサ","Ocimum": "バジル","Oenothera": "ツキミソウ","Olea": "オリーブ","Ophiopogon": "ノシラン","Ornithogalum": "オーニソガラム","Oryza": "イネ","Osteospermum": "アフリカンデージー","Oxalis": "カタバミ","Pachira": "カイエンナット","Paeonia": "シャクヤク","Papaver": "アイスランドポピー","Passiflora": "クダモノトケイソウ","Pelargonium": "センテッドゼラニウム","Pentas": "クササンタンカ","Peperomia": "シマアオイソウ","Pericallis": "シネラリア","Perilla": "エゴマ","Petunia": "ツクバネアサガオ","Phalaenopsis": "コチョウラン","Philadelphus": "バイカウツギ","Philodendron": "センニンカズラ","Phlox": "クサキョウチクトウ","Phoenix": "ナツメヤシ","Phormium": "ニューサイラン","Phyla": "イワダレソウ","Physalis": "センナリホオズキ","Physocarpus": "テマリシモツケ","Physostegia": "カクトラノオ","Pieris": "アセビ","Pinus": "アカマツ","Pittosporum": "コヤスノキ","Platycodon": "キキョウ","Plectranthus": "キンランジソ","Polygonatum": "ナルコユリ","Portulaca": "マツバボタン","Primula": "クリンソウ","Prunus": "セイヨウスモモ","Pyracantha": "トキワサンザシ","Ranunculus": "ハナキンポウゲ","Rhodanthe": "ペーパーカスケード","Rhododendron": "シャクナゲ","Rhodohypoxis": "アッツザクラ","Rosa": "ハマナス","Rosmarinus": "マンネンロウ","Rubus": "ラズベリー","Rudbeckia": "グロリオサデージー","Rumohra": "レザーリーフファーン","Saintpaulia": "アフリカスミレ","Salix": "ヤナギ","Salvia": "アキノタムラソウ","Sandersonia": "サンダーソニア","Sanguisorba": "カライトソウ","Sansevieria": "チトセラン","Sarcandra": "センリョウ","Saxifraga": "ダイモンジソウ","Scabiosa": "マツムシソウ","Schefflera": "ホンコンカポック","Schlumbergera": "クリスマスカクタス","Scilla": "オオツルボ","Sedum": "ベンケイソウ","Senecio": "シロタエギク","Silene": "ムシトリナデシコ","Skimmia": "ミヤマシキミ","Smilax": "サルトリイバラ","Solanum": "トマト","Solidago": "セイタカアワダチソウ","Spathiphyllum": "スパティフィラム","Spiraea": "ユキヤナギ","Stephanotis": "マダガスカルジャスミン","Strelitzia": "ゴクラクチョウカ","Sutera": "バコパ","Syringa": "ムラサキハシドイ","Tagetes": "マリーゴールド","Tanacetum": "ナツシロギク","Thymophylla": "ダールベルグデージー","Tillandsia": "ハナアナナス","Torenia": "トレニア","Trachelospermum": "ハツユキカズラ","Tricyrtis": "ホトトギス","Trifolium": "シロツメクサ","Tropaeolum": "ノウゼンハレン","Tulipa": "チューリップ","Tweedia": "ブルースター","Vaccinium": "コケモモ","Vanda": "ヒスイラン","Verbena": "シュッコンバーベナ","Veronica": "オオイヌノフグリ","Viburnum": "サンゴジュ","Vinca": "ツルニチニチソウ","Viola": "パンジー","Vitis": "ヤマブドウ","Weigela": "ハコネウツギ","Wisteria": "フジ","Yucca": "キミガヨラン","Zantedeschia": "カラー","Zephyranthes": "タマスダレ","Zinnia": "ヒャクニチソウ"
+};
+
+// noteを種類別に分類
+function parseNote(note) {
+  const r = { species:[], confusion:[], circulation:[], taxonomy:[], warning:[] };
+  if (!note) return r;
+  for (const part of note.split('。').map(s=>s.trim()).filter(Boolean)) {
+    if (/[ァ-ヶー]+は[A-Z]/.test(part) || /は別属/.test(part)) r.confusion.push(part);
+    else if (/の名で流通|旧属名/.test(part)) r.circulation.push(part);
+    else if (/から分けられた|とされた|とする見解|以前は|旧版/.test(part)) r.taxonomy.push(part);
+    else if (/は不可/.test(part)) r.warning.push(part);
+    else if (/[ァ-ヶー]/.test(part)) r.species.push(part);
+  }
+  return r;
+}
+
+// ========== WIKIPEDIA API（削除：Artifactからは外部APIに接続不可のため） ==========
+
+
+// ========== QUIZ ==========
+function getPool() {
+  let pool = [...GENERA];
+  if (selectedTarget === 'unlocked') pool = pool.filter(g => state.unlocked[g.latin]);
+  else if (selectedTarget === 'weak') pool = pool.filter(g => (state.mastery[g.latin]||0) <= 1);
+  if (pool.length === 0) pool = [...GENERA];
+  return pool;
+}
+
+function startQuiz() {
+  document.getElementById('resultScreen').classList.remove('show');
+  showScreen('quiz', null);
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  const pool = getPool().sort(() => Math.random()-.5).slice(0,20);
+  const modes = selectedMode === 'mixed' ? ['latin2all','jp2latin','family2genus'] : [selectedMode];
+  quizState = {
+    questions: pool.map(g => buildQ(g, modes[Math.floor(Math.random()*modes.length)])),
+    current: 0, score: 0, answered: false, startTime: Date.now()
+  };
+  renderQ();
+}
+
+function buildQ(g, mode) {
+  if (mode === 'jp2latin') return { genus:g, type:'和名→属名（ラテン語）', prompt:g.jpName, hint:`科名：${g.family}　読み：${g.read}`, fields:[{label:'属名（ラテン語）',answer:g.latin}] };
+  if (mode === 'family2genus') {
+    const fg = GENERA.filter(x=>x.family===g.family);
+    return { genus:g, type:'科名→属名列挙', prompt:g.family, hint:`C級リストで ${fg.length} 属あります`, fields:[{label:'この科の属名をすべて（ラテン語）',answer:fg.map(x=>x.latin).join('、'),multi:true,famGenera:fg}] };
+  }
+  return { genus:g, type:'属名→科名・属和名', prompt:g.latin, hint:`読み：${g.read}`, fields:[{label:'科名（APG）',answer:g.family},{label:'属和名（または代表種名）',answer:g.jpName}] };
+}
+
+function renderQ() {
+  const q = quizState.questions[quizState.current];
+  const tot = quizState.questions.length;
+  document.getElementById('quizCounter').textContent = `${quizState.current+1} / ${tot}`;
+  document.getElementById('quizScoreLive').textContent = quizState.score.toFixed(1)+' pt';
+  document.getElementById('quizProgressFill').style.width = (quizState.current/tot*100)+'%';
+  document.getElementById('quizActionBtn').textContent = '答え合わせ';
+  quizState.answered = false;
+  let html = `<span class="question-type-badge">${q.type}</span>
+    <div class="question-text">${q.prompt}</div>
+    <div class="question-hint">${q.hint}</div>
+    <div class="answer-fields">`;
+  q.fields.forEach((f,i) => {
+    html += `<div><div class="field-label">${f.label}</div>
+      <input class="answer-input" id="ans_${i}" type="text"
+        autocorrect="off" autocapitalize="off" spellcheck="false"
+        placeholder="${f.multi?'カンマ区切りで入力':''}"></div>`;
+  });
+  html += `</div><div class="feedback-box" id="feedbackBox"></div>`;
+  document.getElementById('quizBody').innerHTML = html;
+  setTimeout(() => document.getElementById('ans_0')?.focus(), 80);
+}
+
+function levenshtein(a, b) {
+  const m=a.length, n=b.length;
+  const dp=Array.from({length:m+1},(_,i)=>Array.from({length:n+1},(_,j)=>i?j?0:j:i));
+  for(let i=1;i<=m;i++) for(let j=1;j<=n;j++)
+    dp[i][j]=a[i-1]===b[j-1]?dp[i-1][j-1]:1+Math.min(dp[i-1][j],dp[i][j-1],dp[i-1][j-1]);
+  return dp[m][n];
+}
+function spellScore(ans, correct) {
+  if (!ans) return 0;
+  const a=ans.trim().toLowerCase(), c=correct.trim().toLowerCase();
+  if (a===c) return 1;
+  return levenshtein(a,c)===1 ? 0.5 : 0;
+}
+
+function handleQuizAction() {
+  if (quizState.answered) {
+    quizState.current++;
+    if (quizState.current >= quizState.questions.length) showResult();
+    else renderQ();
+    return;
+  }
+  quizState.answered = true;
+  const q = quizState.questions[quizState.current];
+  let lines = [], allOk = true, qScore = 0;
+
+  q.fields.forEach((f,i) => {
+    const inp = document.getElementById(`ans_${i}`);
+    const val = inp.value;
+    if (f.multi) {
+      const fg = f.famGenera;
+      const user = val.split(/[,、，\s]+/).map(s=>s.trim()).filter(Boolean);
+      let fs=0, missed=[];
+      fg.forEach(g => {
+        const best = user.map(u=>spellScore(u,g.latin)).sort((a,b)=>b-a)[0]||0;
+        fs += best/fg.length;
+        if (best===0) { missed.push(g.latin); allOk=false; }
+      });
+      qScore += fs;
+      inp.className = 'answer-input '+(missed.length===0?'correct':missed.length===fg.length?'wrong':'partial');
+      lines.push(`正解: ${fg.map(g=>g.latin).join('、')}`);
+      if (missed.length) lines.push(`未回答: ${missed.join('、')}`);
+    } else {
+      const s = spellScore(val, f.answer);
+      qScore += s;
+      if (s===1) { inp.className='answer-input correct'; lines.push(`✅ ${f.label}: ${f.answer}`); }
+      else if (s===0.5) { inp.className='answer-input partial'; lines.push(`⚠️ ${f.label}: 正解は <span class="correct-ans">${f.answer}</span>（スペルミス→0.5点）`); allOk=false; }
+      else { inp.className='answer-input wrong'; lines.push(`❌ ${f.label}: 正解は <span class="correct-ans">${f.answer}</span>`); allOk=false; }
+    }
+  });
+
+  const norm = (qScore/q.fields.length)*(200/quizState.questions.length);
+  quizState.score += norm;
+  state.unlocked[q.genus.latin] = true;
+  // 正答率トラッキング
+  if (!state.accuracy[q.genus.latin]) state.accuracy[q.genus.latin] = {correct:0, total:0};
+  state.accuracy[q.genus.latin].total++;
+  if (allOk) state.accuracy[q.genus.latin].correct++;
+  state.mastery[q.genus.latin] = allOk
+    ? Math.min(3,(state.mastery[q.genus.latin]||0)+1)
+    : qScore===0 ? Math.max(0,(state.mastery[q.genus.latin]||0)-1)
+    : (state.mastery[q.genus.latin]||0);
+  state.todayCount++;
+  saveProgress();
+
+  const cls = allOk?'correct':qScore>0?'partial':'wrong';
+  const fb = document.getElementById('feedbackBox');
+  fb.className='feedback-box show '+cls;
+  fb.innerHTML = lines.join('<br>') + (q.genus.note?`<div class="feedback-note">📝 ${q.genus.note}</div>`:'');
+  document.getElementById('quizActionBtn').textContent = quizState.current+1<quizState.questions.length?'次の問題 →':'結果を見る';
+  document.getElementById('quizScoreLive').textContent = quizState.score.toFixed(1)+' pt';
+}
+
+function showResult() {
+  const elapsed = Math.round((Date.now()-quizState.startTime)/1000);
+  const score = Math.min(200, Math.round(quizState.score*10)/10);
+  const pass = score >= 180;
+  document.getElementById('resultScreen').classList.add('show');
+  document.getElementById('resultEmoji').textContent = pass?'🌸':score>=140?'🌿':'🌱';
+  document.getElementById('resultScore').innerHTML = `${score.toFixed(1)}<span>/200</span>`;
+  document.getElementById('resultLabel').textContent = pass?'合格ライン達成！🎉':'次回も頑張ろう！';
+  const min=Math.floor(elapsed/60), sec=elapsed%60;
+  document.getElementById('resultDetail').innerHTML = `
+    <div class="result-row"><span class="lbl">所要時間</span><span class="val">${min}分${sec}秒</span></div>
+    <div class="result-row"><span class="lbl">出題数</span><span class="val">${quizState.questions.length}問</span></div>
+    <div class="result-row"><span class="lbl">合格ライン</span><span class="val">180点以上</span></div>
+    <div class="result-row"><span class="lbl">今日の累計</span><span class="val">${state.todayCount}問</span></div>`;
+  state.history.unshift({date:new Date().toLocaleDateString('ja-JP'),score,mode:selectedMode,time:`${min}分${sec}秒`});
+  if(state.history.length>20) state.history.pop();
+  saveProgress();
+  renderHome(); renderStats();
+}
+
+function finishQuiz() { showScreen('home', document.querySelector('nav button:nth-child(1)')); renderHome(); renderZukan(); }
+function exitQuiz() { showScreen('home', document.querySelector('nav button:nth-child(1)')); renderHome(); }
+
+// ========== ZUKAN ==========
+function renderZukan() {
+  const grid = document.getElementById('zukanGrid');
+  const s = zukanSearch.toLowerCase();
+  const list = GENERA.filter(g => {
+    if (s && !g.latin.toLowerCase().includes(s) && !g.jpName.includes(zukanSearch) && !g.family.includes(zukanSearch) && !g.read.includes(zukanSearch)) return false;
+    if (zukanFilter==='unlocked') return !!state.unlocked[g.latin];
+    if (zukanFilter==='locked') return !state.unlocked[g.latin];
+    if (zukanFilter==='m3') return (state.mastery[g.latin]||0)>=3;
+    if (zukanFilter==='m2') return (state.mastery[g.latin]||0)===2;
+    if (zukanFilter==='m1') return (state.mastery[g.latin]||0)===1;
+    if (zukanFilter==='photo') return false; // 後でフィルタ
+    return true;
+  });
+
+  // 同期で全カードを描画（写真はモーダルを開いたときに表示）
+  // 写真があるかどうかはstate.photoCacheで管理
+  grid.innerHTML = list.map(g => {
+    const mastery = state.mastery[g.latin]||0;
+    const hasPhoto = !!state.photoCache[g.latin];
+    return `<div class="zukan-card ${hasPhoto?'has-photo':'unlocked'}" id="zc_${g.latin}" onclick="openDetail('${g.latin}')">
+      <div class="mastery-dot m${mastery}"></div>
+      ${hasPhoto ? `<img class="card-thumb" src="${state.photoCache[g.latin]}" loading="lazy">` : ''}
+      <div class="card-latin">${g.latin}</div>
+      <div class="card-fam">${g.family.replace('科','')}</div>
+    </div>`;
+  }).join('');
+
+  if (zukanFilter === 'photo') {
+    list.forEach(g => {
+      if (!state.photoCache[g.latin]) {
+        const el = document.getElementById('zc_'+g.latin);
+        if (el) el.style.display = 'none';
+      }
+    });
+  }
+}
+
+function filterZukan(val) { zukanSearch=val; renderZukan(); }
+function setFilter(btn, f) {
+  document.querySelectorAll('.filter-chip').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  zukanFilter=f; renderZukan();
+}
+
+// ========== DETAIL MODAL ==========
+async function openDetail(latin) {
+  try {
+    const g = GENERA.find(x=>x.latin===latin);
+    if (!g) return;
+    currentGenus = g;
+
+    document.getElementById('mLatin').textContent = g.latin;
+    document.getElementById('mSub').textContent = g.read + '\u3000' + g.family;
+
+    const parsed = parseNote(g.note);
+    const noteRows = [
+      parsed.species.length    ? '<div class="info-item full"><div class="lbl">代表種・園芸品種</div><div class="val" style="font-size:12px;line-height:1.7">'+parsed.species.join('\u3000')+'</div></div>' : '',
+      parsed.confusion.length  ? '<div class="info-item full"><div class="lbl">⚠️ 混同注意</div><div class="val" style="font-size:12px;line-height:1.7;color:var(--warn)">'+parsed.confusion.join('\u3000')+'</div></div>' : '',
+      parsed.circulation.length? '<div class="info-item full"><div class="lbl">📦 流通名</div><div class="val" style="font-size:12px;line-height:1.7">'+parsed.circulation.join('\u3000')+'</div></div>' : '',
+      parsed.taxonomy.length   ? '<div class="info-item full"><div class="lbl">🔬 分類補足</div><div class="val" style="font-size:12px;line-height:1.7;color:var(--text2)">'+parsed.taxonomy.join('\u3000')+'</div></div>' : '',
+      parsed.warning.length    ? '<div class="info-item full"><div class="lbl">🚫 注意事項</div><div class="val" style="font-size:12px;line-height:1.7;color:var(--danger)">'+parsed.warning.join('\u3000')+'</div></div>' : '',
+    ].filter(Boolean).join('');
+
+    let infoHtml = '<div class="info-item"><div class="lbl">科名（APG）</div><div class="val">'+g.family+'</div></div>';
+    infoHtml += '<div class="info-item"><div class="lbl">属和名・代表種</div><div class="val">'+g.jpName+'</div></div>';
+    if (g.oldFamily) infoHtml += '<div class="info-item"><div class="lbl">旧科名</div><div class="val">'+g.oldFamily+'</div></div>';
+    // 正答率
+    const acc = state.accuracy[g.latin];
+    if (acc && acc.total > 0) {
+      const pct = Math.round(acc.correct/acc.total*100);
+      infoHtml += '<div class="info-item"><div class="lbl">正答率</div><div class="val" style="color:'+(pct>=80?'var(--accent)':pct>=50?'var(--warn)':'var(--danger)')+'">'+pct+'% ('+acc.correct+'/'+acc.total+')</div></div>';
+    }
+    infoHtml += noteRows;
+    document.getElementById('mInfoGrid').innerHTML = infoHtml;
+
+    document.getElementById('modalOverlay').classList.add('show');
+    // モーダルを先頭にスクロール
+    document.getElementById('modalOverlay').querySelector('.modal-sheet').scrollTop = 0;
+
+    await renderMyPhotos(g.latin);
+
+    const wikiKey = WIKI_KEYS[g.latin] || g.latin;
+    document.getElementById('mSourceRow').innerHTML =
+      '<a class="source-link" href="https://ja.wikipedia.org/wiki/'+encodeURIComponent(wikiKey)+'" target="_blank">📖 Wiki<br><span style="font-size:9px;color:var(--text3)">'+wikiKey+'</span></a>' +
+      '<a class="source-link" href="https://www.inaturalist.org/taxa/search?q='+encodeURIComponent(g.latin)+'&rank=genus" target="_blank">🔍 iNat<br><span style="font-size:9px;color:var(--text3)">'+g.latin+'</span></a>' +
+      '<a class="source-link" href="https://powo.science.kew.org/taxon/search?q='+encodeURIComponent(g.latin)+'" target="_blank">🌐 POWO<br><span style="font-size:9px;color:var(--text3)">'+g.latin+'</span></a>';
+
+    const loc = state.location[g.latin];
+    document.getElementById('mLocationText').textContent = loc
+      ? '📍 ' + (loc.label || (loc.lat.toFixed(4) + ', ' + loc.lng.toFixed(4)))
+      : '発見場所を記録';
+
+    const mastery = state.mastery[g.latin]||0;
+    document.getElementById('mMasteryRow').innerHTML = [
+      {l:'未',m:0,icon:'○'},{l:'★',m:1,icon:'★'},{l:'★★',m:2,icon:'★★'},{l:'★★★',m:3,icon:'★★★'}
+    ].map(function(item) {
+      return '<button class="mastery-btn '+(mastery===item.m?'active-m'+item.m:'')+'" onclick="setMastery(\''+g.latin+'\','+item.m+')">'+item.icon+'<br>'+item.l+'</button>';
+    }).join('');
+  } catch(err) {
+    console.warn('openDetail error:', err.message);
+  }
+}
+
+async function renderMyPhotos(latin) {
+  const photos = await dbGetPhotos(latin);
+  document.getElementById('myPhotosGrid').innerHTML =
+    photos.map((p,i) =>
+      `<div class="my-photo-wrap" onclick="viewPhotoUrl('${p.dataUrl}')">
+        <img class="my-photo" src="${p.dataUrl}">
+        <button class="photo-delete" onclick="deleteMyPhoto(event,${i})">×</button>
+      </div>`
+    ).join('') +
+    `<button class="photo-add-btn" onclick="document.getElementById('photoInput').click()">＋</button>`;
+}
+
+function closeModal() { document.getElementById('modalOverlay').classList.remove('show'); renderZukan(); renderHome(); }
+function closeModalIfOutside(e) { if(e.target===document.getElementById('modalOverlay')) closeModal(); }
+
+// 写真アップロード：Cloudinary（ログイン時）またはIndexedDB（未ログイン時）
+async function handlePhotoUpload(e) {
+  const files = Array.from(e.target.files);
+  if (!files.length || !currentGenus) return;
+  const latin = currentGenus.latin;
+  showToast('アップロード中… 📤');
+
+  const existing = await dbGetPhotos(latin);
+  for (const file of files) {
+    try {
+      let url;
+      if (currentUser) {
+        url = await uploadToCloudinary(file);
+      } else {
+        url = await compressImage(file, 800, 0.75);
+      }
+      existing.push({ dataUrl: url });
+      if (!state.photoCache[latin]) state.photoCache[latin] = url;
+    } catch(err) {
+      showToast('アップロードに失敗しました ⚠️');
+      continue;
+    }
+  }
+  await dbSetPhotos(latin, existing);
+  state.unlocked[latin] = true;
+  await saveProgress();
+  await renderMyPhotos(latin);
+  renderZukan();
+  renderHome();
+  showToast(files.length + '枚追加しました 📷');
+  e.target.value = '';
+}
+
+function compressImage(file, maxPx, quality) {
+  return new Promise(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      let w=img.width, h=img.height;
+      if (w>maxPx||h>maxPx) { if(w>h){h=Math.round(h*maxPx/w);w=maxPx;}else{w=Math.round(w*maxPx/h);h=maxPx;} }
+      const canvas = document.createElement('canvas');
+      canvas.width=w; canvas.height=h;
+      canvas.getContext('2d').drawImage(img,0,0,w,h);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.src = url;
+  });
+}
+
+async function deleteMyPhoto(e, idx) {
+  e.stopPropagation();
+  const latin = currentGenus.latin;
+  const photos = await dbGetPhotos(latin);
+  photos.splice(idx,1);
+  await dbSetPhotos(latin, photos);
+  // キャッシュ更新
+  if (photos.length > 0) state.photoCache[latin] = photos[0].dataUrl;
+  else delete state.photoCache[latin];
+  await renderMyPhotos(latin);
+  renderZukan();
+}
+
+function viewPhotoUrl(url) {
+  document.getElementById('fullscreenImg').src = url;
+  document.getElementById('fullscreenPhoto').classList.add('show');
+}
+function closeFullscreen() { document.getElementById('fullscreenPhoto').classList.remove('show'); }
+
+async function setMastery(latin, val) {
+  state.mastery[latin]=val;
+  await saveProgress();
+  openDetail(latin);
+}
+
+async function recordLocation() {
+  if (!navigator.geolocation) { showToast('位置情報が使えません'); return; }
+  navigator.geolocation.getCurrentPosition(async pos => {
+    const {latitude:lat, longitude:lng} = pos.coords;
+    state.location[currentGenus.latin] = {lat, lng};
+    await saveProgress();
+    document.getElementById('mLocationText').textContent = `📍 ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+    showToast('現在地を記録しました 📍');
+  }, () => showToast('位置情報の取得に失敗しました'));
+}
+
+// ========== STATS ==========
+function renderStats() {
+  const unlocked = Object.keys(state.unlocked).length;
+  const m3 = Object.values(state.mastery).filter(v=>v>=3).length;
+  const best = state.history.length ? Math.max(...state.history.map(h=>h.score)) : 0;
+  document.getElementById('statsGrid').innerHTML = `
+    <div class="science-card"><div class="sc-label">解放済み属</div><div class="sc-val">${unlocked}</div><div class="sc-sub">/ 300属</div></div>
+    <div class="science-card"><div class="sc-label">★★★習熟</div><div class="sc-val">${m3}</div><div class="sc-sub">属</div></div>
+    <div class="science-card"><div class="sc-label">最高スコア</div><div class="sc-val">${best.toFixed(1)}</div><div class="sc-sub">/ 200点</div></div>
+    <div class="science-card"><div class="sc-label">今日</div><div class="sc-val">${state.todayCount}</div><div class="sc-sub">問</div></div>`;
+  const h = document.getElementById('historyList');
+  h.innerHTML = state.history.length
+    ? state.history.map(s=>`<div class="history-item"><div><div class="date">${s.date}</div><div class="hmode">${s.mode}　${s.time}</div></div><div class="score">${parseFloat(s.score).toFixed(1)} pt</div></div>`).join('')
+    : '<div class="empty-state">まだ記録がありません。<br>練習を始めましょう 🌱</div>';
+}
+
+// ========== NAV ==========
+function showScreen(id, btn) {
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  if(id==='zukan') renderZukan();
+  if(id==='stats') renderStats();
+  if(id==='home') renderHome();
+}
+
+function showToast(msg) {
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2500);
+}
+
+init();
+</script>
+</body>
+</html>
