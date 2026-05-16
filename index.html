@@ -142,6 +142,7 @@
   .zukan-card .card-thumb { width: 100%; height: 50px; object-fit: cover; border-radius: 3px; }
   .zukan-card .card-latin { font-size: 9px; font-style: italic; color: var(--text2); text-align: center; line-height: 1.3; word-break: break-all; }
   .zukan-card .card-fam { font-family: 'Shippori Mincho', serif; font-size: 10px; color: var(--text3); text-align: center; }
+  .zukan-card .card-jp { font-family: 'Shippori Mincho', serif; font-size: 10px; color: var(--text2); text-align: center; }
   .zukan-card .lock-icon { font-size: 18px; color: var(--text3); }
   .mastery-dot { width: 5px; height: 5px; border-radius: 50%; position: absolute; top: 4px; left: 4px; }
   .mastery-dot.m0 { background: var(--text3); }
@@ -216,6 +217,52 @@
 
   .toast { position: fixed; bottom: 72px; left: 50%; transform: translateX(-50%); background: var(--surface2); border: 1px solid var(--border); border-radius: 20px; padding: 7px 16px; font-size: 13px; color: var(--text); z-index: 200; opacity: 0; transition: opacity .3s; white-space: nowrap; pointer-events: none; }
   .toast.show { opacity: 1; }
+
+  /* 問題写真スワイプ */
+  .quiz-photos {
+    position: relative;
+    width: 100%;
+    height: 200px;
+    border-radius: var(--radius);
+    overflow: hidden;
+    background: var(--surface2);
+    touch-action: pan-y;
+  }
+  .quiz-photo-slide {
+    display: flex;
+    height: 100%;
+    transition: transform .25s ease;
+  }
+  .quiz-photo-slide img {
+    flex-shrink: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .quiz-photo-dots {
+    position: absolute;
+    bottom: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 5px;
+  }
+  .quiz-photo-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: rgba(255,255,255,.4);
+    transition: background .2s;
+  }
+  .quiz-photo-dot.active { background: #fff; }
+  .quiz-photo-count {
+    position: absolute;
+    top: 8px; right: 8px;
+    font-size: 11px;
+    background: rgba(0,0,0,.5);
+    color: #fff;
+    border-radius: 10px;
+    padding: 2px 8px;
+  }
   input[type="file"] { display: none; }
 </style>
 </head>
@@ -251,6 +298,7 @@
       <button class="mode-btn selected" data-mode="latin2all" onclick="selectMode(this)"><span class="mode-icon">🔤</span>属名→科名・和名</button>
       <button class="mode-btn" data-mode="jp2latin" onclick="selectMode(this)"><span class="mode-icon">🌿</span>和名→属名</button>
       <button class="mode-btn" data-mode="family2genus" onclick="selectMode(this)"><span class="mode-icon">🌳</span>科名→属名列挙</button>
+      <button class="mode-btn" data-mode="photo" onclick="selectMode(this)"><span class="mode-icon">📷</span>写真問題</button>
       <button class="mode-btn" data-mode="mixed" onclick="selectMode(this)"><span class="mode-icon">🎲</span>ランダム混合</button>
     </div>
   </div>
@@ -259,9 +307,29 @@
     <div class="card-title">対象絞り込み</div>
     <div class="mode-grid" id="targetGrid">
       <button class="mode-btn selected" data-target="all" onclick="selectTarget(this)"><span class="mode-icon">📚</span>全300属</button>
-      <button class="mode-btn" data-target="unlocked" onclick="selectTarget(this)"><span class="mode-icon">🔓</span>解放済みのみ</button>
+      <button class="mode-btn" data-target="range" onclick="selectTarget(this)"><span class="mode-icon">🎯</span>範囲指定</button>
       <button class="mode-btn" data-target="weak" onclick="selectTarget(this)"><span class="mode-icon">💢</span>苦手のみ</button>
-      <button class="mode-btn" data-target="nophoto" onclick="selectTarget(this)"><span class="mode-icon">📷</span>写真未登録</button>
+      <button class="mode-btn" data-target="photo" onclick="selectTarget(this)"><span class="mode-icon">🌸</span>写真登録済み</button>
+    </div>
+    <!-- 範囲指定UI -->
+    <div id="rangeSelector" style="display:none;margin-top:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <span style="font-size:12px;color:var(--text2)">範囲：<span id="rangeLabel" style="color:var(--accent);font-weight:600">1〜20番目</span></span>
+        <span style="font-size:11px;color:var(--text3)" id="rangeGenus"></span>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span style="font-size:11px;color:var(--text3);flex-shrink:0">始</span>
+        <input type="text" inputmode="numeric" id="rangeFrom" value="1"
+          style="width:60px;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:16px;padding:8px 4px;outline:none;text-align:center"
+          oninput="updateRange()">
+        <span style="font-size:11px;color:var(--text3);flex-shrink:0">〜</span>
+        <input type="text" inputmode="numeric" id="rangeTo" value="20"
+          style="width:60px;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:16px;padding:8px 4px;outline:none;text-align:center"
+          oninput="updateRange()">
+        <span style="font-size:11px;color:var(--text3);flex-shrink:0">番目</span>
+      </div>
+      <!-- クイックボタン -->
+      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap" id="quickRangeButtons"></div>
     </div>
   </div>
 
@@ -929,6 +997,49 @@ function selectTarget(btn) {
   document.querySelectorAll('#targetGrid .mode-btn').forEach(b => b.classList.remove('selected'));
   btn.classList.add('selected');
   selectedTarget = btn.dataset.target;
+  // 範囲指定UIの表示切替
+  const rs = document.getElementById('rangeSelector');
+  if (selectedTarget === 'range') {
+    rs.style.display = 'block';
+    updateRange();
+    buildQuickRangeButtons();
+  } else {
+    rs.style.display = 'none';
+  }
+}
+
+function updateRange() {
+  const fromRaw = document.getElementById('rangeFrom').value;
+  const toRaw = document.getElementById('rangeTo').value;
+  const from = parseInt(fromRaw);
+  const to = parseInt(toRaw);
+  // 入力中（空や途中）は表示だけ更新しない
+  if (isNaN(from) || isNaN(to)) return;
+  const f = Math.max(1, Math.min(300, from));
+  const t = Math.max(f, Math.min(300, to));
+  document.getElementById('rangeLabel').textContent = f + '〜' + t + '番目';
+  const first = GENERA[f-1]?.latin || '';
+  const last = GENERA[t-1]?.latin || '';
+  document.getElementById('rangeGenus').textContent = first + ' 〜 ' + last;
+}
+
+function buildQuickRangeButtons() {
+  const container = document.getElementById('quickRangeButtons');
+  const step = 20;
+  let html = '';
+  for (let i = 0; i < 300; i += step) {
+    const from = i + 1;
+    const to = Math.min(i + step, 300);
+    html += '<button onclick="setQuickRange('+from+','+to+')" style="padding:4px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;color:var(--text2);font-size:11px;cursor:pointer;white-space:nowrap">'
+      + from + '〜' + to + '</button>';
+  }
+  container.innerHTML = html;
+}
+
+function setQuickRange(from, to) {
+  document.getElementById('rangeFrom').value = from;
+  document.getElementById('rangeTo').value = to;
+  updateRange();
 }
 
 // ========== WIKI SEARCH KEYS ==========
@@ -955,9 +1066,20 @@ function parseNote(note) {
 
 // ========== QUIZ ==========
 function getPool() {
-  let pool = [...GENERA];
-  if (selectedTarget === 'unlocked') pool = pool.filter(g => state.unlocked[g.latin]);
-  else if (selectedTarget === 'weak') pool = pool.filter(g => (state.mastery[g.latin]||0) <= 1);
+  let pool;
+  if (selectedTarget === 'range') {
+    const fromRaw = parseInt(document.getElementById('rangeFrom')?.value)||1;
+    const toRaw = parseInt(document.getElementById('rangeTo')?.value)||20;
+    const from = Math.max(1, Math.min(300, fromRaw));
+    const to = Math.max(from, Math.min(300, toRaw));
+    pool = GENERA.slice(from-1, to);
+  } else if (selectedTarget === 'weak') {
+    pool = GENERA.filter(g => (state.mastery[g.latin]||0) <= 1);
+  } else if (selectedTarget === 'photo') {
+    pool = GENERA.filter(g => !!state.photoCache[g.latin]);
+  } else {
+    pool = [...GENERA];
+  }
   if (pool.length === 0) pool = [...GENERA];
   return pool;
 }
@@ -966,45 +1088,120 @@ function startQuiz() {
   document.getElementById('resultScreen').classList.remove('show');
   showScreen('quiz', null);
   document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
-  const pool = getPool().sort(() => Math.random()-.5).slice(0,20);
+
+  let pool = getPool();
+
+  // 写真問題モードのとき：写真登録済みの属のみに絞る
+  if (selectedMode === 'photo') {
+    pool = pool.filter(g => !!state.photoCache[g.latin]);
+    if (pool.length === 0) {
+      showScreen('home', document.querySelector('nav button:nth-child(1)'));
+      showToast('写真が登録された属がありません 📷');
+      return;
+    }
+  }
+
   const modes = selectedMode === 'mixed' ? ['latin2all','jp2latin','family2genus'] : [selectedMode];
   quizState = {
-    questions: pool.map(g => buildQ(g, modes[Math.floor(Math.random()*modes.length)])),
+    questions: pool.sort(() => Math.random()-.5).slice(0,20).map(g => buildQ(g, modes[Math.floor(Math.random()*modes.length)])),
     current: 0, score: 0, answered: false, startTime: Date.now()
   };
   renderQ();
 }
 
 function buildQ(g, mode) {
-  if (mode === 'jp2latin') return { genus:g, type:'和名→属名（ラテン語）', prompt:g.jpName, hint:`科名：${g.family}　読み：${g.read}`, fields:[{label:'属名（ラテン語）',answer:g.latin}] };
+  if (mode === 'photo') {
+    return {
+      genus: g, type: '写真→属名・科名・和名',
+      prompt: null, hint: '登録した写真を見て答えてください', photos: true,
+      fields: [
+        {label:'属名（ラテン語）', answer: g.latin},
+        {label:'科名（APG）', answer: g.family},
+        {label:'属和名・代表種', answer: g.jpName},
+      ]
+    };
+  }
+  if (mode === 'jp2latin') return { genus:g, type:'和名→属名（ラテン語）', prompt:g.jpName, hint:'科名：'+g.family+'　読み：'+g.read, photos:false, fields:[{label:'属名（ラテン語）',answer:g.latin}] };
   if (mode === 'family2genus') {
     const fg = GENERA.filter(x=>x.family===g.family);
-    return { genus:g, type:'科名→属名列挙', prompt:g.family, hint:`C級リストで ${fg.length} 属あります`, fields:[{label:'この科の属名をすべて（ラテン語）',answer:fg.map(x=>x.latin).join('、'),multi:true,famGenera:fg}] };
+    return { genus:g, type:'科名→属名列挙', prompt:g.family, hint:'C級リストで '+fg.length+' 属あります', photos:false, fields:[{label:'この科の属名をすべて（ラテン語）',answer:fg.map(x=>x.latin).join('、'),multi:true,famGenera:fg}] };
   }
-  return { genus:g, type:'属名→科名・属和名', prompt:g.latin, hint:`読み：${g.read}`, fields:[{label:'科名（APG）',answer:g.family},{label:'属和名（または代表種名）',answer:g.jpName}] };
+  // 写真がある場合は写真も表示
+  return { genus:g, type:'属名→科名・属和名', prompt:g.latin, hint:'読み：'+g.read, photos: !!state.photoCache[g.latin], fields:[{label:'科名（APG）',answer:g.family},{label:'属和名・代表種',answer:g.jpName}] };
 }
 
 function renderQ() {
   const q = quizState.questions[quizState.current];
   const tot = quizState.questions.length;
-  document.getElementById('quizCounter').textContent = `${quizState.current+1} / ${tot}`;
+  document.getElementById('quizCounter').textContent = (quizState.current+1) + ' / ' + tot;
   document.getElementById('quizScoreLive').textContent = quizState.score.toFixed(1)+' pt';
   document.getElementById('quizProgressFill').style.width = (quizState.current/tot*100)+'%';
   document.getElementById('quizActionBtn').textContent = '答え合わせ';
   quizState.answered = false;
-  let html = `<span class="question-type-badge">${q.type}</span>
-    <div class="question-text">${q.prompt}</div>
-    <div class="question-hint">${q.hint}</div>
-    <div class="answer-fields">`;
+
+  // 写真スワイプHTML生成
+  let photoHtml = '';
+  if (q.photos) {
+    // その属の全写真をIndexedDBから取得して表示（非同期で後から埋め込む）
+    photoHtml = '<div class="quiz-photos" id="quizPhotosWrap"><div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-size:12px">写真を読み込み中…</div></div>';
+  }
+
+  let html = '<span class="question-type-badge">'+q.type+'</span>';
+  if (photoHtml) html += photoHtml;
+  if (q.prompt) html += '<div class="question-text">'+q.prompt+'</div>';
+  html += '<div class="question-hint">'+q.hint+'</div><div class="answer-fields">';
   q.fields.forEach((f,i) => {
-    html += `<div><div class="field-label">${f.label}</div>
-      <input class="answer-input" id="ans_${i}" type="text"
-        autocorrect="off" autocapitalize="off" spellcheck="false"
-        placeholder="${f.multi?'カンマ区切りで入力':''}"></div>`;
+    html += '<div><div class="field-label">'+f.label+'</div>'
+      + '<input class="answer-input" id="ans_'+i+'" type="text"'
+      + ' autocorrect="off" autocapitalize="off" spellcheck="false"'
+      + ' placeholder="'+(f.multi?'カンマ区切りで入力':'')+'"></div>';
   });
-  html += `</div><div class="feedback-box" id="feedbackBox"></div>`;
+  html += '</div><div class="feedback-box" id="feedbackBox"></div>';
   document.getElementById('quizBody').innerHTML = html;
+
+  // 写真を非同期で読み込んでスワイプUIに差し替え
+  if (q.photos) {
+    dbGetPhotos(q.genus.latin).then(photos => {
+      const wrap = document.getElementById('quizPhotosWrap');
+      if (!wrap || photos.length === 0) {
+        if (wrap) wrap.style.display = 'none';
+        return;
+      }
+      buildPhotoSwiper(wrap, photos);
+    });
+  }
+
   setTimeout(() => document.getElementById('ans_0')?.focus(), 80);
+}
+
+function buildPhotoSwiper(wrap, photos) {
+  let current = 0;
+  const dotsHtml = photos.length > 1
+    ? '<div class="quiz-photo-dots">'+photos.map((_,i) => '<div class="quiz-photo-dot'+(i===0?' active':'')+'"></div>').join('')+'</div>'
+    : '';
+  const countHtml = photos.length > 1 ? '<div class="quiz-photo-count">1 / '+photos.length+'</div>' : '';
+
+  wrap.innerHTML =
+    '<div class="quiz-photo-slide" id="photoSlide">'
+    + photos.map(p => '<img src="'+p.dataUrl+'" loading="lazy">').join('')
+    + '</div>'
+    + dotsHtml + countHtml;
+
+  if (photos.length <= 1) return;
+
+  // スワイプ処理
+  const slide = document.getElementById('photoSlide');
+  let startX = 0;
+  wrap.addEventListener('touchstart', e => { startX = e.touches[0].clientX; }, {passive:true});
+  wrap.addEventListener('touchend', e => {
+    const diff = startX - e.changedTouches[0].clientX;
+    if (Math.abs(diff) < 40) return;
+    if (diff > 0 && current < photos.length-1) current++;
+    else if (diff < 0 && current > 0) current--;
+    slide.style.transform = 'translateX(-'+current*100+'%)';
+    wrap.querySelectorAll('.quiz-photo-dot').forEach((d,i) => d.classList.toggle('active', i===current));
+    wrap.querySelector('.quiz-photo-count').textContent = (current+1)+' / '+photos.length;
+  }, {passive:true});
 }
 
 function levenshtein(a, b) {
@@ -1126,7 +1323,8 @@ function renderZukan() {
       <div class="mastery-dot m${mastery}"></div>
       ${hasPhoto ? `<img class="card-thumb" src="${state.photoCache[g.latin]}" loading="lazy">` : ''}
       <div class="card-latin">${g.latin}</div>
-      <div class="card-fam">${g.family.replace('科','')}</div>
+      <div class="card-fam">${g.family}</div>
+      <div class="card-jp">${g.jpName.replace('属','').split('：')[0]}</div>
     </div>`;
   }).join('');
 
@@ -1228,6 +1426,16 @@ async function handlePhotoUpload(e) {
   const latin = currentGenus.latin;
   showToast('アップロード中… 📤');
 
+  // 位置情報を並行して取得
+  const locPromise = new Promise(resolve => {
+    if (!navigator.geolocation) { resolve(null); return; }
+    navigator.geolocation.getCurrentPosition(
+      pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => resolve(null),
+      { timeout: 5000 }
+    );
+  });
+
   const existing = await dbGetPhotos(latin);
   for (const file of files) {
     try {
@@ -1246,11 +1454,20 @@ async function handlePhotoUpload(e) {
   }
   await dbSetPhotos(latin, existing);
   state.unlocked[latin] = true;
+
+  // 位置情報を保存（まだ記録がない場合のみ）
+  const loc = await locPromise;
+  if (loc && !state.location[latin]) {
+    state.location[latin] = { lat: loc.lat, lng: loc.lng };
+    document.getElementById('mLocationText').textContent =
+      '📍 ' + loc.lat.toFixed(4) + ', ' + loc.lng.toFixed(4);
+  }
+
   await saveProgress();
   await renderMyPhotos(latin);
   renderZukan();
   renderHome();
-  showToast(files.length + '枚追加しました 📷');
+  showToast(files.length + '枚追加しました 📷' + (loc ? '　📍 位置記録済み' : ''));
   e.target.value = '';
 }
 
