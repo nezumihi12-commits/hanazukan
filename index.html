@@ -7,9 +7,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>花図鑑 — 1000属検定C級</title>
 <!-- Firebase SDK (compat版・scriptタグで読み込み) -->
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js" onerror="console.warn('Firebase SDK load failed')"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js" onerror="console.warn('Firebase Auth load failed')"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js" onerror="console.warn('Firebase Firestore load failed')"></script>
 <link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;600;800&family=DM+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -314,7 +314,7 @@
     <!-- 範囲指定UI -->
     <div id="rangeSelector" style="display:none;margin-top:12px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-        <span style="font-size:12px;color:var(--text2)">範囲：<span id="rangeLabel" style="color:var(--accent);font-weight:600">1〜20番目</span></span>
+        <span style="font-size:12px;color:var(--text2)">範囲：<span id="rangeLabel" style="color:var(--accent);font-weight:600">1〜5番目</span></span>
         <span style="font-size:11px;color:var(--text3)" id="rangeGenus"></span>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
@@ -323,13 +323,12 @@
           style="width:60px;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:16px;padding:8px 4px;outline:none;text-align:center"
           oninput="updateRange()">
         <span style="font-size:11px;color:var(--text3);flex-shrink:0">〜</span>
-        <input type="text" inputmode="numeric" id="rangeTo" value="20"
+        <input type="text" inputmode="numeric" id="rangeTo" value="5"
           style="width:60px;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:16px;padding:8px 4px;outline:none;text-align:center"
           oninput="updateRange()">
         <span style="font-size:11px;color:var(--text3);flex-shrink:0">番目</span>
       </div>
-      <!-- クイックボタン -->
-      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap" id="quickRangeButtons"></div>
+      <!-- クイックボタン省略 -->
     </div>
   </div>
 
@@ -752,10 +751,11 @@ let state = {
   mastery: {},
   location: {},
   history: [],
-  accuracy: {},   // latin -> {correct: N, total: N}
+  accuracy: {},
   todayCount: 0,
   todayDate: '',
-  photoCache: {},  // latin -> CloudinaryのURL or dataUrl
+  photoCache: {},
+  lastRange: { from: 1, to: 5 },
 };
 // 写真はIndexedDB（大容量）
 let photoDB = null;
@@ -834,21 +834,26 @@ async function signIn() {
 }
 
 async function initFirebase() {
-  // Firebase SDKがscriptタグで読み込まれているか確認
-  if (typeof firebase === 'undefined') return false;
+  // Firebase SDKが読み込まれているか確認
+  if (typeof firebase === 'undefined' || typeof firebase.initializeApp === 'undefined') {
+    document.getElementById('saveStatus').textContent = '💾 ローカル保存中（クラウド未接続）';
+    return false;
+  }
   try {
-    firebase.initializeApp(FIREBASE_CONFIG);
+    // 既に初期化済みの場合はスキップ
+    if (firebase.apps.length === 0) {
+      firebase.initializeApp(FIREBASE_CONFIG);
+    }
     firebaseAuth = firebase.auth();
     firebaseDb = firebase.firestore();
     firebaseAuth.onAuthStateChanged(async user => {
       currentUser = user;
       updateAuthUI(user);
-      if (user) {
-        await loadFromFirestore();
-      }
+      if (user) await loadFromFirestore();
     });
     return true;
   } catch(e) {
+    document.getElementById('saveStatus').textContent = '💾 ローカル保存中（クラウド未接続）';
     return false;
   }
 }
@@ -999,10 +1004,13 @@ function selectTarget(btn) {
   selectedTarget = btn.dataset.target;
   // 範囲指定UIの表示切替
   const rs = document.getElementById('rangeSelector');
+  if (!rs) return;
   if (selectedTarget === 'range') {
     rs.style.display = 'block';
+    // 前回の範囲を復元
+    document.getElementById('rangeFrom').value = state.lastRange?.from || 1;
+    document.getElementById('rangeTo').value = state.lastRange?.to || 5;
     updateRange();
-    buildQuickRangeButtons();
   } else {
     rs.style.display = 'none';
   }
@@ -1013,7 +1021,6 @@ function updateRange() {
   const toRaw = document.getElementById('rangeTo').value;
   const from = parseInt(fromRaw);
   const to = parseInt(toRaw);
-  // 入力中（空や途中）は表示だけ更新しない
   if (isNaN(from) || isNaN(to)) return;
   const f = Math.max(1, Math.min(300, from));
   const t = Math.max(f, Math.min(300, to));
@@ -1021,19 +1028,9 @@ function updateRange() {
   const first = GENERA[f-1]?.latin || '';
   const last = GENERA[t-1]?.latin || '';
   document.getElementById('rangeGenus').textContent = first + ' 〜 ' + last;
-}
-
-function buildQuickRangeButtons() {
-  const container = document.getElementById('quickRangeButtons');
-  const step = 20;
-  let html = '';
-  for (let i = 0; i < 300; i += step) {
-    const from = i + 1;
-    const to = Math.min(i + step, 300);
-    html += '<button onclick="setQuickRange('+from+','+to+')" style="padding:4px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;color:var(--text2);font-size:11px;cursor:pointer;white-space:nowrap">'
-      + from + '〜' + to + '</button>';
-  }
-  container.innerHTML = html;
+  // 範囲をstateに保存
+  state.lastRange = { from: f, to: t };
+  saveProgress();
 }
 
 function setQuickRange(from, to) {
@@ -1109,25 +1106,69 @@ function startQuiz() {
   renderQ();
 }
 
-function buildQ(g, mode) {
-  if (mode === 'photo') {
-    return {
-      genus: g, type: '写真→属名・科名・和名',
-      prompt: null, hint: '登録した写真を見て答えてください', photos: true,
-      fields: [
-        {label:'属名（ラテン語）', answer: g.latin},
-        {label:'科名（APG）', answer: g.family},
-        {label:'属和名・代表種', answer: g.jpName},
-      ]
-    };
+// 答えるべき全情報セットを生成
+function buildFields(g) {
+  const fields = [];
+  // ① 属名（ラテン語）
+  fields.push({ label:'属名（ラテン語）', key:'latin', answer: g.latin, type:'latin' });
+  // ② 科名（APG・旧科名どちらでも正解）
+  fields.push({ label:'科名', key:'family', answer: g.family, altAnswers: g.oldFamily ? [g.oldFamily] : [], type:'family' });
+  // ③ 属和名・代表種名（note内の代表種も正解）
+  const jpAnswers = [g.jpName];
+  // noteから代表種も追加
+  if (g.note) {
+    const noteFirst = g.note.split('。')[0];
+    const candidate = noteFirst.split('、')[0].replace(/（[^）]*）/g,'').replace(/\([^)]*\)/g,'').trim();
+    if (candidate && candidate !== g.jpName && /[ァ-ヶー]/.test(candidate) && !/[A-Za-z]/.test(candidate)) {
+      jpAnswers.push(candidate);
+    }
   }
-  if (mode === 'jp2latin') return { genus:g, type:'和名→属名（ラテン語）', prompt:g.jpName, hint:'科名：'+g.family+'　読み：'+g.read, photos:false, fields:[{label:'属名（ラテン語）',answer:g.latin}] };
+  fields.push({ label:'属和名・代表種名', key:'jpName', answer: g.jpName, altAnswers: jpAnswers.slice(1), type:'jp' });
+  return fields;
+}
+
+function buildQ(g, mode) {
   if (mode === 'family2genus') {
     const fg = GENERA.filter(x=>x.family===g.family);
-    return { genus:g, type:'科名→属名列挙', prompt:g.family, hint:'C級リストで '+fg.length+' 属あります', photos:false, fields:[{label:'この科の属名をすべて（ラテン語）',answer:fg.map(x=>x.latin).join('、'),multi:true,famGenera:fg}] };
+    return { genus:g, type:'科名→属名列挙', prompt:g.family, hint:'C級リストで '+fg.length+' 属あります', photos:false,
+      fields:[{label:'この科の属名をすべて（ラテン語）', answer:fg.map(x=>x.latin).join('、'), multi:true, famGenera:fg, type:'multi'}] };
   }
-  // 写真がある場合は写真も表示
-  return { genus:g, type:'属名→科名・属和名', prompt:g.latin, hint:'読み：'+g.read, photos: !!state.photoCache[g.latin], fields:[{label:'科名（APG）',answer:g.family},{label:'属和名・代表種',answer:g.jpName}] };
+
+  const fields = buildFields(g);
+  const hasPhoto = !!state.photoCache[g.latin];
+
+  if (mode === 'photo') {
+    return { genus:g, type:'写真→属名・科名・和名', prompt:null,
+      hint:'登録した写真を見て答えてください', photos:true, fields };
+  }
+  if (mode === 'jp2latin') {
+    // 代表種名または属和名をヒントに
+    const hint = g.jpName + (g.note ? '（'+g.note.split('。')[0].split('、')[0].replace(/（[^）]*）/g,'').trim()+'）' : '');
+    return { genus:g, type:'和名・代表種→全情報', prompt: hint,
+      hint:'読み：'+g.read, photos: hasPhoto, fields };
+  }
+  // latin2all（デフォルト）
+  return { genus:g, type:'属名→科名・和名', prompt:g.latin,
+    hint:'読み：'+g.read, photos: hasPhoto, fields };
+}
+
+// 科名の採点（APG・旧科名どちらでも正解）
+function scoreFamilyAnswer(val, field) {
+  if (!val) return 0;
+  const v = val.trim();
+  if (v === field.answer) return 1;
+  if (field.altAnswers && field.altAnswers.some(a => v === a)) return 1;
+  // スペルミス的なゆらぎ（ひらがな・カタカナ表記ゆれは許容しない）
+  return 0;
+}
+
+// 属和名・代表種名の採点（複数正解対応）
+function scoreJpAnswer(val, field) {
+  if (!val) return 0;
+  const v = val.trim();
+  if (v === field.answer) return 1;
+  if (field.altAnswers && field.altAnswers.some(a => a && v === a)) return 1;
+  return 0;
 }
 
 function renderQ() {
@@ -1151,10 +1192,14 @@ function renderQ() {
   if (q.prompt) html += '<div class="question-text">'+q.prompt+'</div>';
   html += '<div class="question-hint">'+q.hint+'</div><div class="answer-fields">';
   q.fields.forEach((f,i) => {
+    // field.typeに応じてキーボードを切り替え
+    const isLatin = f.type === 'latin' || f.type === 'multi';
+    const inputAttrs = isLatin
+      ? 'inputmode="latin" lang="en" autocorrect="off" autocapitalize="off" autocomplete="off" spellcheck="false"'
+      : 'inputmode="text" lang="ja" autocorrect="off" autocapitalize="off" autocomplete="off" spellcheck="false"';
     html += '<div><div class="field-label">'+f.label+'</div>'
-      + '<input class="answer-input" id="ans_'+i+'" type="text"'
-      + ' autocorrect="off" autocapitalize="off" spellcheck="false"'
-      + ' placeholder="'+(f.multi?'カンマ区切りで入力':'')+'"></div>';
+      + '<input class="answer-input" id="ans_'+i+'" type="text" '+inputAttrs
+      + ' placeholder="'+(f.type==='multi'?'カンマ区切りで入力':'')+'"></div>';
   });
   html += '</div><div class="feedback-box" id="feedbackBox"></div>';
   document.getElementById('quizBody').innerHTML = html;
@@ -1230,9 +1275,11 @@ function handleQuizAction() {
   let lines = [], allOk = true, qScore = 0;
 
   q.fields.forEach((f,i) => {
-    const inp = document.getElementById(`ans_${i}`);
-    const val = inp.value;
-    if (f.multi) {
+    const inp = document.getElementById('ans_'+i);
+    const val = inp ? inp.value : '';
+
+    if (f.type === 'multi') {
+      // 科名→属名列挙
       const fg = f.famGenera;
       const user = val.split(/[,、，\s]+/).map(s=>s.trim()).filter(Boolean);
       let fs=0, missed=[];
@@ -1243,21 +1290,42 @@ function handleQuizAction() {
       });
       qScore += fs;
       inp.className = 'answer-input '+(missed.length===0?'correct':missed.length===fg.length?'wrong':'partial');
-      lines.push(`正解: ${fg.map(g=>g.latin).join('、')}`);
-      if (missed.length) lines.push(`未回答: ${missed.join('、')}`);
-    } else {
+      lines.push('正解: '+fg.map(g=>g.latin).join('、'));
+      if (missed.length) lines.push('未回答: '+missed.join('、'));
+
+    } else if (f.type === 'latin') {
+      // ラテン語属名：スペルミス1箇所で0.5点
       const s = spellScore(val, f.answer);
       qScore += s;
-      if (s===1) { inp.className='answer-input correct'; lines.push(`✅ ${f.label}: ${f.answer}`); }
-      else if (s===0.5) { inp.className='answer-input partial'; lines.push(`⚠️ ${f.label}: 正解は <span class="correct-ans">${f.answer}</span>（スペルミス→0.5点）`); allOk=false; }
-      else { inp.className='answer-input wrong'; lines.push(`❌ ${f.label}: 正解は <span class="correct-ans">${f.answer}</span>`); allOk=false; }
+      if (s===1) { inp.className='answer-input correct'; lines.push('✅ '+f.label+': '+f.answer); }
+      else if (s===0.5) { inp.className='answer-input partial'; lines.push('⚠️ '+f.label+': 正解は <span class="correct-ans">'+f.answer+'</span>（スペルミス→0.5点）'); allOk=false; }
+      else { inp.className='answer-input wrong'; lines.push('❌ '+f.label+': 正解は <span class="correct-ans">'+f.answer+'</span>'); allOk=false; }
+
+    } else if (f.type === 'family') {
+      // 科名：APGまたは旧科名で正解
+      const s = scoreFamilyAnswer(val, f);
+      qScore += s;
+      const allCorrect = f.altAnswers && f.altAnswers.length > 0
+        ? f.answer + '（または ' + f.altAnswers.join('・') + '）'
+        : f.answer;
+      if (s===1) { inp.className='answer-input correct'; lines.push('✅ '+f.label+': '+f.answer); }
+      else { inp.className='answer-input wrong'; lines.push('❌ '+f.label+': 正解は <span class="correct-ans">'+allCorrect+'</span>'); allOk=false; }
+
+    } else if (f.type === 'jp') {
+      // 属和名・代表種名：複数正解対応
+      const s = scoreJpAnswer(val, f);
+      qScore += s;
+      const allCorrect = f.altAnswers && f.altAnswers.length > 0
+        ? f.answer + '（または ' + f.altAnswers.join('・') + '）'
+        : f.answer;
+      if (s===1) { inp.className='answer-input correct'; lines.push('✅ '+f.label+': '+f.answer); }
+      else { inp.className='answer-input wrong'; lines.push('❌ '+f.label+': 正解は <span class="correct-ans">'+allCorrect+'</span>'); allOk=false; }
     }
   });
 
   const norm = (qScore/q.fields.length)*(200/quizState.questions.length);
   quizState.score += norm;
   state.unlocked[q.genus.latin] = true;
-  // 正答率トラッキング
   if (!state.accuracy[q.genus.latin]) state.accuracy[q.genus.latin] = {correct:0, total:0};
   state.accuracy[q.genus.latin].total++;
   if (allOk) state.accuracy[q.genus.latin].correct++;
@@ -1271,7 +1339,7 @@ function handleQuizAction() {
   const cls = allOk?'correct':qScore>0?'partial':'wrong';
   const fb = document.getElementById('feedbackBox');
   fb.className='feedback-box show '+cls;
-  fb.innerHTML = lines.join('<br>') + (q.genus.note?`<div class="feedback-note">📝 ${q.genus.note}</div>`:'');
+  fb.innerHTML = lines.join('<br>') + (q.genus.note?'<div class="feedback-note">📝 '+q.genus.note+'</div>':'');
   document.getElementById('quizActionBtn').textContent = quizState.current+1<quizState.questions.length?'次の問題 →':'結果を見る';
   document.getElementById('quizScoreLive').textContent = quizState.score.toFixed(1)+' pt';
 }
