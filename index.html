@@ -1525,12 +1525,19 @@ async function renderMyPhotos(latin) {
   window._currentPhotoUrls = photos.map(p => p.dataUrl);
   document.getElementById('myPhotosGrid').innerHTML =
     photos.map((p,i) =>
-      '<div class="my-photo-wrap" onclick="viewPhotos(window._currentPhotoUrls,'+i+')">'
-      + '<img class="my-photo" src="'+p.dataUrl+'">'
+      '<div class="my-photo-wrap">'
+      + '<img class="my-photo" src="'+p.dataUrl+'" data-idx="'+i+'" onclick="handlePhotoTap(this)">'
       + '<button class="photo-delete" onclick="deleteMyPhoto(event,'+i+')">×</button>'
       + '</div>'
     ).join('')
     + '<button class="photo-add-btn" onclick="document.getElementById(\'photoInput\').click()">＋</button>';
+}
+
+function handlePhotoTap(img) {
+  const idx = parseInt(img.dataset.idx) || 0;
+  if (window._currentPhotoUrls && window._currentPhotoUrls.length > 0) {
+    viewPhotos(window._currentPhotoUrls, idx);
+  }
 }
 
 function closeModal() { document.getElementById('modalOverlay').classList.remove('show'); renderZukan(); renderHome(); }
