@@ -1522,10 +1522,10 @@ async function openDetail(latin) {
 
 async function renderMyPhotos(latin) {
   const photos = await dbGetPhotos(latin);
-  const urls = photos.map(p => p.dataUrl);
+  window._currentPhotoUrls = photos.map(p => p.dataUrl);
   document.getElementById('myPhotosGrid').innerHTML =
     photos.map((p,i) =>
-      '<div class="my-photo-wrap" onclick="viewPhotos('+JSON.stringify(urls)+','+i+')">'
+      '<div class="my-photo-wrap" onclick="viewPhotos(window._currentPhotoUrls,'+i+')">'
       + '<img class="my-photo" src="'+p.dataUrl+'">'
       + '<button class="photo-delete" onclick="deleteMyPhoto(event,'+i+')">×</button>'
       + '</div>'
