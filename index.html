@@ -134,16 +134,13 @@
   .filter-chip { flex-shrink: 0; padding: 5px 12px; border-radius: 20px; border: 1px solid var(--border); background: var(--surface2); color: var(--text2); font-size: 12px; cursor: pointer; white-space: nowrap; transition: all .2s; }
   .filter-chip.active { background: var(--accent); color: #0f1a14; border-color: var(--accent); font-weight: 600; }
   .zukan-grid { flex: 1; overflow-y: auto; padding: 10px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; align-content: start; -webkit-overflow-scrolling: touch; }
-  .zukan-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 6px; cursor: pointer; transition: border-color .2s, transform .1s; display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 85px; justify-content: center; position: relative; overflow: hidden; }
+  .zukan-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px; cursor: pointer; transition: border-color .2s, transform .1s; display: flex; flex-direction: column; align-items: center; gap: 2px; height: 118px; overflow: hidden; position: relative; }
   .zukan-card:active { transform: scale(.95); }
   .zukan-card.has-photo { border-color: var(--accent2); }
-  .zukan-card.has-inat { border-color: var(--border); background: #1a2a20; }
-  .zukan-card.locked { opacity: .3; }
-  .zukan-card .card-thumb { width: 100%; height: 50px; object-fit: cover; border-radius: 3px; }
-  .zukan-card .card-latin { font-size: 9px; font-style: italic; color: var(--text2); text-align: center; line-height: 1.3; word-break: break-all; }
-  .zukan-card .card-fam { font-family: 'Shippori Mincho', serif; font-size: 10px; color: var(--text3); text-align: center; }
-  .zukan-card .card-jp { font-family: 'Shippori Mincho', serif; font-size: 10px; color: var(--text2); text-align: center; }
-  .zukan-card .lock-icon { font-size: 18px; color: var(--text3); }
+  .zukan-card .card-thumb { width: 100%; height: 46px; object-fit: cover; border-radius: 4px; flex-shrink: 0; }
+  .zukan-card .card-latin { font-size: 9px; font-style: italic; color: var(--text2); text-align: center; line-height: 1.2; word-break: break-all; width: 100%; margin-top: 2px; }
+  .zukan-card .card-fam { font-family: 'Shippori Mincho', serif; font-size: 9px; color: var(--text3); text-align: center; width: 100%; }
+  .zukan-card .card-jp { font-family: 'Shippori Mincho', serif; font-size: 9px; color: var(--text2); text-align: center; width: 100%; }
   .mastery-dot { width: 5px; height: 5px; border-radius: 50%; position: absolute; top: 4px; left: 4px; }
   .mastery-dot.m0 { background: var(--text3); }
   .mastery-dot.m1 { background: var(--warn); }
@@ -365,7 +362,7 @@
     </div>
   </div>
 
-  <button class="btn btn-primary" onclick="startQuiz()">🌸 練習する（20問）</button>
+  <button class="btn btn-primary" onclick="startQuiz()">🌸 練習する</button>
   <div class="science-badge">
     <div class="info"><strong>本番ルール適用中</strong><br>スペルミス1箇所→0.5点　200点満点・180点以上で合格</div>
   </div>
@@ -1426,10 +1423,10 @@ function renderZukan() {
     const photoArea = hasPhoto
       ? '<img src="'+state.photoCache[g.latin]+'" loading="lazy" style="width:100%;height:52px;object-fit:cover;border-radius:6px;display:block">'
       : '<div style="width:100%;height:52px;background:rgba(0,0,0,.35);border-radius:6px;display:flex;align-items:center;justify-content:center"><div class="lock-icon-css"></div></div>';
-    return '<div class="zukan-card '+(hasPhoto?'has-photo':'unlocked')+'" id="zc_'+g.latin+'" onclick="openDetail(\''+g.latin+'\')" style="min-height:105px;justify-content:flex-start;padding:6px;gap:3px">'
+    return '<div class="zukan-card '+(hasPhoto?'has-photo':'unlocked')+'" id="zc_'+g.latin+'" onclick="openDetail(\''+g.latin+'\')">'
       + '<div class="mastery-dot m'+mastery+'"></div>'
       + photoArea
-      + '<div class="card-latin" style="margin-top:2px">'+g.latin+'</div>'
+      + '<div class="card-latin">'+g.latin+'</div>'
       + '<div class="card-fam">'+g.family+'</div>'
       + '<div class="card-jp">'+jpDisplay+'</div>'
       + '</div>';
