@@ -151,6 +151,37 @@
   .mastery-dot.m3 { background: var(--gold); }
   .photo-badge { position: absolute; top: 3px; right: 3px; font-size: 9px; background: rgba(0,0,0,.55); border-radius: 3px; padding: 1px 3px; color: var(--accent2); }
 
+  /* 錠前アイコン（CSS製） */
+  .lock-icon-css {
+    position: relative;
+    width: 16px;
+    height: 12px;
+    background: rgba(255,255,255,0.28);
+    border-radius: 2.5px;
+    margin-top: 8px;
+  }
+  .lock-icon-css::before {
+    content: '';
+    position: absolute;
+    top: -8px; left: 50%;
+    transform: translateX(-50%);
+    width: 10px; height: 9px;
+    border: 2.5px solid rgba(255,255,255,0.28);
+    border-bottom: none;
+    border-radius: 5px 5px 0 0;
+    box-sizing: border-box;
+  }
+  .lock-icon-css::after {
+    content: '';
+    position: absolute;
+    top: 3px; left: 50%;
+    transform: translateX(-50%);
+    width: 4px; height: 4px;
+    background: rgba(0,0,0,0.35);
+    border-radius: 50%;
+    box-shadow: 0 2.5px 0 rgba(0,0,0,0.35);
+  }
+
   /* MODAL */
   .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.75); z-index: 100; align-items: flex-end; justify-content: center; }
   .modal-overlay.show { display: flex; }
@@ -209,11 +240,13 @@
   .empty-state { text-align: center; color: var(--text3); font-size: 13px; padding: 28px; line-height: 1.8; }
   .save-status { font-size: 10px; color: var(--text3); text-align: right; }
 
-  /* FULLSCREEN */
-  .fullscreen-photo { display: none; position: fixed; inset: 0; background: #000; z-index: 300; align-items: center; justify-content: center; }
+  /* FULLSCREEN（スワイプ対応） */
+  .fullscreen-photo { display: none; position: fixed; inset: 0; background: #000; z-index: 300; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
   .fullscreen-photo.show { display: flex; }
-  .fullscreen-photo img { max-width: 100%; max-height: 100%; object-fit: contain; }
-  .fullscreen-close { position: absolute; top: 16px; right: 16px; background: rgba(0,0,0,.6); border: none; color: #fff; font-size: 22px; width: 38px; height: 38px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .fullscreen-slide { display: flex; width: 100%; height: 100%; transition: transform .25s ease; }
+  .fullscreen-slide img { flex-shrink: 0; width: 100%; height: 100%; object-fit: contain; }
+  .fullscreen-close { position: absolute; top: 16px; right: 16px; background: rgba(0,0,0,.6); border: none; color: #fff; font-size: 22px; width: 38px; height: 38px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 1; }
+  .fullscreen-counter { position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); font-size: 12px; color: rgba(255,255,255,.7); background: rgba(0,0,0,.4); border-radius: 12px; padding: 3px 10px; }
 
   .toast { position: fixed; bottom: 72px; left: 50%; transform: translateX(-50%); background: var(--surface2); border: 1px solid var(--border); border-radius: 20px; padding: 7px 16px; font-size: 13px; color: var(--text); z-index: 200; opacity: 0; transition: opacity .3s; white-space: nowrap; pointer-events: none; }
   .toast.show { opacity: 1; }
@@ -426,8 +459,9 @@
 
 <!-- FULLSCREEN -->
 <div class="fullscreen-photo" id="fullscreenPhoto">
-  <img id="fullscreenImg" src="" alt="">
+  <div class="fullscreen-slide" id="fullscreenSlide"></div>
   <button class="fullscreen-close" onclick="closeFullscreen()">✕</button>
+  <div class="fullscreen-counter" id="fullscreenCounter" style="display:none"></div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -1387,13 +1421,18 @@ function renderZukan() {
   grid.innerHTML = list.map(g => {
     const mastery = state.mastery[g.latin]||0;
     const hasPhoto = !!state.photoCache[g.latin];
-    return `<div class="zukan-card ${hasPhoto?'has-photo':'unlocked'}" id="zc_${g.latin}" onclick="openDetail('${g.latin}')">
-      <div class="mastery-dot m${mastery}"></div>
-      ${hasPhoto ? `<img class="card-thumb" src="${state.photoCache[g.latin]}" loading="lazy">` : ''}
-      <div class="card-latin">${g.latin}</div>
-      <div class="card-fam">${g.family}</div>
-      <div class="card-jp">${g.jpName.replace('属','').split('：')[0]}</div>
-    </div>`;
+    const jpBase = g.jpName.split('：')[0];
+    const jpDisplay = jpBase.endsWith('属') ? jpBase : jpBase + '属';
+    const photoArea = hasPhoto
+      ? '<img src="'+state.photoCache[g.latin]+'" loading="lazy" style="width:100%;height:52px;object-fit:cover;border-radius:6px;display:block">'
+      ? '<div style="width:100%;height:52px;background:rgba(0,0,0,.35);border-radius:6px;display:flex;align-items:center;justify-content:center"><div class="lock-icon-css"></div></div>';
+    return '<div class="zukan-card '+(hasPhoto?'has-photo':'unlocked')+'" id="zc_'+g.latin+'" onclick="openDetail(\''+g.latin+'\')" style="min-height:105px;justify-content:flex-start;padding:6px;gap:3px">'
+      + '<div class="mastery-dot m'+mastery+'"></div>'
+      + photoArea
+      + '<div class="card-latin" style="margin-top:2px">'+g.latin+'</div>'
+      + '<div class="card-fam">'+g.family+'</div>'
+      + '<div class="card-jp">'+jpDisplay+'</div>'
+      + '</div>';
   }).join('');
 
   if (zukanFilter === 'photo') {
@@ -1421,7 +1460,16 @@ async function openDetail(latin) {
     currentGenus = g;
 
     document.getElementById('mLatin').textContent = g.latin;
-    document.getElementById('mSub').textContent = g.read + '\u3000' + g.family;
+    document.getElementById('mSub').textContent = g.read;
+
+    // モーダル下スワイプで閉じる
+    const sheet = document.querySelector('.modal-sheet');
+    let swipeStartY = 0;
+    sheet.ontouchstart = e => { swipeStartY = e.touches[0].clientY; };
+    sheet.ontouchend = e => {
+      const diff = e.changedTouches[0].clientY - swipeStartY;
+      if (diff > 80 && sheet.scrollTop === 0) closeModal();
+    };
 
     const parsed = parseNote(g.note);
     const noteRows = [
@@ -1474,14 +1522,15 @@ async function openDetail(latin) {
 
 async function renderMyPhotos(latin) {
   const photos = await dbGetPhotos(latin);
+  const urls = photos.map(p => p.dataUrl);
   document.getElementById('myPhotosGrid').innerHTML =
     photos.map((p,i) =>
-      `<div class="my-photo-wrap" onclick="viewPhotoUrl('${p.dataUrl}')">
-        <img class="my-photo" src="${p.dataUrl}">
-        <button class="photo-delete" onclick="deleteMyPhoto(event,${i})">×</button>
-      </div>`
-    ).join('') +
-    `<button class="photo-add-btn" onclick="document.getElementById('photoInput').click()">＋</button>`;
+      '<div class="my-photo-wrap" onclick="viewPhotos('+JSON.stringify(urls)+','+i+')">'
+      + '<img class="my-photo" src="'+p.dataUrl+'">'
+      + '<button class="photo-delete" onclick="deleteMyPhoto(event,'+i+')">×</button>'
+      + '</div>'
+    ).join('')
+    + '<button class="photo-add-btn" onclick="document.getElementById(\'photoInput\').click()">＋</button>';
 }
 
 function closeModal() { document.getElementById('modalOverlay').classList.remove('show'); renderZukan(); renderHome(); }
@@ -1569,10 +1618,44 @@ async function deleteMyPhoto(e, idx) {
   renderZukan();
 }
 
+let fsPhotos = [], fsCurrent = 0;
+
 function viewPhotoUrl(url) {
-  document.getElementById('fullscreenImg').src = url;
-  document.getElementById('fullscreenPhoto').classList.add('show');
+  viewPhotos([url], 0);
 }
+
+function viewPhotos(urls, startIdx) {
+  fsPhotos = urls;
+  fsCurrent = startIdx || 0;
+  const slide = document.getElementById('fullscreenSlide');
+  slide.innerHTML = urls.map(u => '<img src="'+u+'" loading="lazy">').join('');
+  slide.style.transform = 'translateX(-'+fsCurrent*100+'%)';
+  const counter = document.getElementById('fullscreenCounter');
+  if (urls.length > 1) {
+    counter.style.display = 'block';
+    counter.textContent = (fsCurrent+1) + ' / ' + urls.length;
+  } else {
+    counter.style.display = 'none';
+  }
+  const wrap = document.getElementById('fullscreenPhoto');
+  wrap.classList.add('show');
+  let sx = 0;
+  const onStart = e => { sx = e.touches[0].clientX; };
+  const onEnd = e => {
+    const diff = sx - e.changedTouches[0].clientX;
+    if (Math.abs(diff) < 40) return;
+    if (diff > 0 && fsCurrent < fsPhotos.length-1) fsCurrent++;
+    else if (diff < 0 && fsCurrent > 0) fsCurrent--;
+    slide.style.transform = 'translateX(-'+fsCurrent*100+'%)';
+    if (fsPhotos.length > 1) counter.textContent = (fsCurrent+1)+' / '+fsPhotos.length;
+  };
+  if (wrap._ts) wrap.removeEventListener('touchstart', wrap._ts);
+  if (wrap._te) wrap.removeEventListener('touchend', wrap._te);
+  wrap._ts = onStart; wrap._te = onEnd;
+  wrap.addEventListener('touchstart', onStart, {passive:true});
+  wrap.addEventListener('touchend', onEnd, {passive:true});
+}
+
 function closeFullscreen() { document.getElementById('fullscreenPhoto').classList.remove('show'); }
 
 async function setMastery(latin, val) {
