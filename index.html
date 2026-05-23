@@ -10,6 +10,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js" onerror="console.warn('Firebase SDK load failed')"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js" onerror="console.warn('Firebase Auth load failed')"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js" onerror="console.warn('Firebase Firestore load failed')"></script>
+<script src="https://cdn.jsdelivr.net/npm/exifr/dist/lite.umd.js" onerror="console.warn('exifr load failed')"></script>
 <link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;600;800&family=DM+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -314,20 +315,20 @@
       <div class="ring-center">
         <span class="num" id="unlockedCount">0</span>
         <span class="denom">/ 300属</span>
+        <span class="denom">記憶済み</span>
       </div>
     </div>
     <div class="ring-stats">
-      <div class="stat-item"><div class="label">写真登録</div><div class="value" id="photoCount">0 属</div></div>
-      <div class="stat-item"><div class="label">★★★習熟</div><div class="value" id="masteredCount">0 属</div></div>
-      <div class="stat-item"><div class="label">今日</div><div class="value" id="todayCount">0 問</div></div>
+      <div class="stat-item"><div class="label">写真登録済み</div><div class="value" id="photoCount">0 属</div></div>
+      <div class="stat-item"><div class="label">今日の出題数</div><div class="value" id="todayCount">0 問</div></div>
     </div>
   </div>
 
   <div class="card">
     <div class="card-title">出題モード</div>
     <div class="mode-grid" id="modeGrid">
-      <button class="mode-btn selected" data-mode="latin2all" onclick="selectMode(this)"><span class="mode-icon">🔤</span>属名→科名・和名</button>
-      <button class="mode-btn" data-mode="jp2latin" onclick="selectMode(this)"><span class="mode-icon">🌿</span>和名→属名</button>
+      <button class="mode-btn selected" data-mode="latin2family" onclick="selectMode(this)"><span class="mode-icon">🔤</span>属名→科名</button>
+      <button class="mode-btn" data-mode="jp2latin" onclick="selectMode(this)"><span class="mode-icon">🌿</span>和名→属名（ラテン語）</button>
       <button class="mode-btn" data-mode="family2genus" onclick="selectMode(this)"><span class="mode-icon">🌳</span>科名→属名列挙</button>
       <button class="mode-btn" data-mode="photo" onclick="selectMode(this)"><span class="mode-icon">📷</span>写真問題</button>
       <button class="mode-btn" data-mode="mixed" onclick="selectMode(this)"><span class="mode-icon">🎲</span>ランダム混合</button>
@@ -386,7 +387,7 @@
     <div class="result-score-big" id="resultScore">0<span>/200</span></div>
     <div id="resultLabel" style="font-size:14px;color:var(--text2)"></div>
     <div class="result-detail" id="resultDetail"></div>
-    <button class="btn btn-primary" onclick="finishQuiz()" style="width:100%">図鑑に戻る</button>
+    <button class="btn btn-primary" onclick="finishQuiz()" style="width:100%">ホームに戻る</button>
     <button class="btn btn-secondary" onclick="startQuiz()" style="width:100%">もう一回</button>
   </div>
 </div>
@@ -396,12 +397,9 @@
     <input class="zukan-search" type="search" placeholder="属名・科名・和名で検索…" autocomplete="off" oninput="filterZukan(this.value)">
     <div class="filter-row">
       <button class="filter-chip active" onclick="setFilter(this,'all')">すべて</button>
-      <button class="filter-chip" onclick="setFilter(this,'unlocked')">解放済み</button>
+      <button class="filter-chip" onclick="setFilter(this,'unlocked')">出題済み</button>
       <button class="filter-chip" onclick="setFilter(this,'photo')">写真あり</button>
-      <button class="filter-chip" onclick="setFilter(this,'m3')">★★★</button>
-      <button class="filter-chip" onclick="setFilter(this,'m2')">★★</button>
-      <button class="filter-chip" onclick="setFilter(this,'m1')">★</button>
-      <button class="filter-chip" onclick="setFilter(this,'locked')">未解放</button>
+      <button class="filter-chip" onclick="setFilter(this,'locked')">未出題</button>
     </div>
   </div>
   <div class="zukan-grid" id="zukanGrid"></div>
@@ -410,6 +408,8 @@
 <div id="stats" class="screen">
   <div class="stats-title">学習記録</div>
   <div class="science-grid" id="statsGrid"></div>
+  <div class="card-title" style="margin-top:4px">形式別正答率（全体）</div>
+  <div class="card" id="statsAccuracy"></div>
   <div class="card-title">セッション履歴</div>
   <div class="history-list" id="historyList"></div>
 </div>
@@ -449,8 +449,8 @@
     </div>
 
     <div>
-      <div class="section-label" style="margin-bottom:6px">習熟度</div>
-      <div class="mastery-row" id="mMasteryRow"></div>
+      <div class="section-label" style="margin-bottom:8px">形式別正答率</div>
+      <div id="mAccuracyBars"></div>
     </div>
   </div>
 </div>
@@ -1009,17 +1009,23 @@ async function init() {
 }
 
 // ========== HOME ==========
+// 全3形式で1回以上正解済みの属数
+function countMemorized() {
+  return GENERA.filter(g => {
+    const acc = state.accuracy[g.latin];
+    if (!acc) return false;
+    return ['latin2family','jp2latin','latin2jp'].every(m => acc[m] && acc[m].correct > 0);
+  }).length;
+}
+
 function renderHome() {
-  const unlocked = Object.keys(state.unlocked).length;
-  const mastered = Object.values(state.mastery).filter(v => v >= 3).length;
-  // 写真登録数はIndexedDBから同期的に取れないので近似（unlockedで代用）
-  document.getElementById('unlockedCount').textContent = unlocked;
-  document.getElementById('masteredCount').textContent = mastered + ' 属';
+  const memorized = countMemorized();
+  const photoCount = Object.keys(state.photoCache).length;
+  document.getElementById('unlockedCount').textContent = memorized;
   document.getElementById('todayCount').textContent = state.todayCount + ' 問';
-  const pct = unlocked / 300;
+  document.getElementById('photoCount').textContent = photoCount + ' 属';
+  const pct = memorized / 300;
   document.getElementById('ringFill').style.strokeDashoffset = 289 - 289 * pct;
-  // 写真数を非同期で更新
-  document.getElementById('photoCount').textContent = countPhotos() + ' 属';
 }
 function countPhotos() {
   return Object.keys(state.photoCache).length;
@@ -1098,12 +1104,20 @@ function getPool() {
   let pool;
   if (selectedTarget === 'range') {
     const fromRaw = parseInt(document.getElementById('rangeFrom')?.value)||1;
-    const toRaw = parseInt(document.getElementById('rangeTo')?.value)||20;
+    const toRaw = parseInt(document.getElementById('rangeTo')?.value)||5;
     const from = Math.max(1, Math.min(300, fromRaw));
     const to = Math.max(from, Math.min(300, toRaw));
     pool = GENERA.slice(from-1, to);
   } else if (selectedTarget === 'weak') {
-    pool = GENERA.filter(g => (state.mastery[g.latin]||0) <= 1);
+    pool = GENERA.filter(g => {
+    const acc = state.accuracy[g.latin];
+    if (!acc) return false; // 未出題は除外
+    const modes = ['latin2family','jp2latin','latin2jp'];
+    const tried = modes.filter(m => acc[m] && acc[m].total > 0);
+    if (tried.length === 0) return false;
+    const avg = tried.reduce((s,m) => s + acc[m].correct/acc[m].total, 0) / tried.length;
+    return avg < 0.5;
+  });
   } else if (selectedTarget === 'photo') {
     pool = GENERA.filter(g => !!state.photoCache[g.latin]);
   } else {
@@ -1117,10 +1131,7 @@ function startQuiz() {
   document.getElementById('resultScreen').classList.remove('show');
   showScreen('quiz', null);
   document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
-
   let pool = getPool();
-
-  // 写真問題モードのとき：写真登録済みの属のみに絞る
   if (selectedMode === 'photo') {
     pool = pool.filter(g => !!state.photoCache[g.latin]);
     if (pool.length === 0) {
@@ -1129,127 +1140,225 @@ function startQuiz() {
       return;
     }
   }
-
-  const modes = selectedMode === 'mixed' ? ['latin2all','jp2latin','family2genus'] : [selectedMode];
+  // mixed は family2genus を除外
+  const modes = selectedMode === 'mixed'
+    ? ['latin2family', 'jp2latin', 'latin2jp']
+    : [selectedMode];
   quizState = {
-    questions: pool.sort(() => Math.random()-.5).slice(0,20).map(g => buildQ(g, modes[Math.floor(Math.random()*modes.length)])),
-    current: 0, score: 0, answered: false, startTime: Date.now()
+    questions: pool.sort(() => Math.random()-.5).slice(0,20).map(g =>
+      buildQ(g, modes[Math.floor(Math.random()*modes.length)])),
+    current: 0, answered: false, startTime: Date.now()
   };
   renderQ();
 }
 
-// 答えるべき全情報セットを生成
-function buildFields(g) {
-  const fields = [];
-  // ① 属名（ラテン語）
-  fields.push({ label:'属名（ラテン語）', key:'latin', answer: g.latin, type:'latin' });
-  // ② 科名（APG・旧科名どちらでも正解）
-  fields.push({ label:'科名', key:'family', answer: g.family, altAnswers: g.oldFamily ? [g.oldFamily] : [], type:'family' });
-  // ③ 属和名・代表種名（note内の代表種も正解）
-  const jpAnswers = [g.jpName];
-  // noteから代表種も追加
+// 属和名のパターン判定
+function getJpInfo(g) {
+  let repName = null;
   if (g.note) {
     const noteFirst = g.note.split('。')[0];
-    const candidate = noteFirst.split('、')[0].replace(/（[^）]*）/g,'').replace(/\([^)]*\)/g,'').trim();
-    if (candidate && candidate !== g.jpName && /[ァ-ヶー]/.test(candidate) && !/[A-Za-z]/.test(candidate)) {
-      jpAnswers.push(candidate);
+    const BAD = [/[ァ-ヶー]+は[A-Z]/, /以前は/, /旧属名/, /とされた/, /とする見解/, /の名で流通/, /を含む/, /から分けられた/, /は不可/, /[A-Z][a-z]+の名/, /ともいう/, /の園芸名/, /は現在は/];
+    if (!BAD.some(p => p.test(noteFirst))) {
+      const c = noteFirst.split('、')[0].replace(/（[^）]*）/g,'').replace(/\([^)]*\)/g,'').trim();
+      if (c && /[ァ-ヶー]/.test(c) && !/[A-Za-z]/.test(c) && c !== g.jpName) repName = c;
     }
   }
-  fields.push({ label:'属和名・代表種名', key:'jpName', answer: g.jpName, altAnswers: jpAnswers.slice(1), type:'jp' });
-  return fields;
+  const jpBase = g.jpName.replace('属','').split('：')[0];
+  const hasKanji = /[一-龯]/.test(jpBase);
+  const isKatakanaOnly = /^[ァ-ヶーa-zA-Z\s]+$/.test(jpBase) && !hasKanji;
+  if (isKatakanaOnly && !g.jpName.includes('属')) {
+    return { pattern: 'C', jpName: g.jpName, answers: [g.jpName], suffix: '' };
+  }
+  if (repName) {
+    const base = g.jpName.replace('属','');
+    return { pattern: 'B', jpName: g.jpName, answers: [base, repName, g.jpName], suffix: '属' };
+  }
+  const base = g.jpName.replace('属','');
+  return { pattern: 'A', jpName: g.jpName, answers: [base, g.jpName], suffix: '属' };
 }
 
 function buildQ(g, mode) {
+  const hasPhoto = !!state.photoCache[g.latin];
+  const jpInfo = getJpInfo(g);
+
   if (mode === 'family2genus') {
     const fg = GENERA.filter(x=>x.family===g.family);
-    return { genus:g, type:'科名→属名列挙', prompt:g.family, hint:'C級リストで '+fg.length+' 属あります', photos:false,
-      fields:[{label:'この科の属名をすべて（ラテン語）', answer:fg.map(x=>x.latin).join('、'), multi:true, famGenera:fg, type:'multi'}] };
+    return {
+      genus: g, mode,
+      type: '科名→属名列挙',
+      prompt: g.family,
+      hint: 'C級リストで ' + fg.length + ' 属あります',
+      hintHidden: false,
+      photos: false,
+      fields: [{
+        label: 'この科に含まれる属名をすべて答えなさい',
+        suffix: '',
+        answer: fg.map(x=>x.latin).join('、'),
+        multi: true, famGenera: fg, type: 'multi', inputmode: 'latin'
+      }]
+    };
   }
 
-  const fields = buildFields(g);
-  const hasPhoto = !!state.photoCache[g.latin];
+  if (mode === 'latin2family') {
+    return {
+      genus: g, mode,
+      type: '属名→科名',
+      prompt: g.latin,
+      hint: '読み：' + g.read,
+      hintHidden: true,
+      photos: hasPhoto,
+      fields: [{
+        label: '科名を答えなさい',
+        suffix: '科',
+        answer: g.family.replace('科',''),
+        altAnswers: g.oldFamily ? [g.oldFamily.replace('科','')] : [],
+        type: 'family', inputmode: 'text'
+      }]
+    };
+  }
+
+  if (mode === 'jp2latin') {
+    let prompt;
+    if (jpInfo.pattern === 'B') {
+      // 代表種名をヒントに（suffixなし）
+      prompt = jpInfo.answers[1] || jpInfo.answers[0];
+    } else {
+      // 属和名をヒントに（suffixあり）
+      prompt = jpInfo.answers[0] + jpInfo.suffix;
+    }
+    return {
+      genus: g, mode,
+      type: '和名→属名（ラテン語）',
+      prompt: prompt,
+      hint: '科名：' + g.family,
+      hintHidden: true,
+      photos: hasPhoto,
+      fields: [{
+        label: '属名（ラテン語）を答えなさい',
+        suffix: '',
+        answer: g.latin,
+        altAnswers: [],
+        type: 'latin', inputmode: 'latin'
+      }]
+    };
+  }
+
+  if (mode === 'latin2jp') {
+    let label, hint2;
+    if (jpInfo.pattern === 'C') {
+      label = 'この属の一般名称を答えなさい';
+      hint2 = 'カタカナで答えてください';
+    } else if (jpInfo.pattern === 'B') {
+      label = '属和名または代表種和名を一つ答えなさい';
+      hint2 = 'どちらか一つでOK';
+    } else {
+      label = '属和名を答えなさい';
+      hint2 = '';
+    }
+    return {
+      genus: g, mode,
+      type: '属名→属和名/代表種名',
+      prompt: g.latin,
+      hint: hint2,
+      hintHidden: false,
+      photos: hasPhoto,
+      fields: [{
+        label,
+        suffix: jpInfo.suffix,
+        answer: jpInfo.answers[0].replace('属',''),
+        altAnswers: jpInfo.answers.slice(1).map(a => a.replace('属','')),
+        type: 'jp', inputmode: 'text'
+      }]
+    };
+  }
 
   if (mode === 'photo') {
-    return { genus:g, type:'写真→属名・科名・和名', prompt:null,
-      hint:'登録した写真を見て答えてください', photos:true, fields };
+    return {
+      genus: g, mode,
+      type: '写真→属名・科名',
+      prompt: null, hint: '', hintHidden: false, photos: true,
+      fields: [
+        { label:'属名（ラテン語）を答えなさい', suffix:'', answer: g.latin, altAnswers:[], type:'latin', inputmode:'latin' },
+        { label:'科名を答えなさい', suffix:'科', answer: g.family.replace('科',''), altAnswers: g.oldFamily?[g.oldFamily.replace('科','')]:[], type:'family', inputmode:'text' },
+      ]
+    };
   }
-  if (mode === 'jp2latin') {
-    // 代表種名または属和名をヒントに
-    const hint = g.jpName + (g.note ? '（'+g.note.split('。')[0].split('、')[0].replace(/（[^）]*）/g,'').trim()+'）' : '');
-    return { genus:g, type:'和名・代表種→全情報', prompt: hint,
-      hint:'読み：'+g.read, photos: hasPhoto, fields };
-  }
-  // latin2all（デフォルト）
-  return { genus:g, type:'属名→科名・和名', prompt:g.latin,
-    hint:'読み：'+g.read, photos: hasPhoto, fields };
+  return buildQ(g, 'latin2family');
 }
 
-// 科名の採点（APG・旧科名どちらでも正解）
 function scoreFamilyAnswer(val, field) {
   if (!val) return 0;
-  const v = val.trim();
-  if (v === field.answer) return 1;
-  if (field.altAnswers && field.altAnswers.some(a => v === a)) return 1;
-  // スペルミス的なゆらぎ（ひらがな・カタカナ表記ゆれは許容しない）
+  const v = val.trim().replace('科','');
+  if (v === field.answer.replace('科','')) return 1;
+  if (field.altAnswers && field.altAnswers.some(a => v === a.replace('科',''))) return 1;
   return 0;
 }
 
-// 属和名・代表種名の採点（複数正解対応）
 function scoreJpAnswer(val, field) {
   if (!val) return 0;
-  const v = val.trim();
-  if (v === field.answer) return 1;
-  if (field.altAnswers && field.altAnswers.some(a => a && v === a)) return 1;
+  const v = val.trim().replace('属','');
+  if (v === field.answer.replace('属','')) return 1;
+  if (field.altAnswers && field.altAnswers.some(a => a && v === a.replace('属',''))) return 1;
   return 0;
+}
+
+function showHint() {
+  const q = quizState.questions[quizState.current];
+  const el = document.getElementById('hintBox');
+  if (el) { el.textContent = q.hint; el.style.color='var(--text3)'; el.style.cursor='default'; el.onclick=null; }
 }
 
 function renderQ() {
   const q = quizState.questions[quizState.current];
   const tot = quizState.questions.length;
   document.getElementById('quizCounter').textContent = (quizState.current+1) + ' / ' + tot;
-  document.getElementById('quizScoreLive').textContent = quizState.score.toFixed(1)+' pt';
+  document.getElementById('quizScoreLive').textContent = '';
   document.getElementById('quizProgressFill').style.width = (quizState.current/tot*100)+'%';
   document.getElementById('quizActionBtn').textContent = '答え合わせ';
   quizState.answered = false;
 
-  // 写真スワイプHTML生成
   let photoHtml = '';
   if (q.photos) {
-    // その属の全写真をIndexedDBから取得して表示（非同期で後から埋め込む）
     photoHtml = '<div class="quiz-photos" id="quizPhotosWrap"><div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-size:12px">写真を読み込み中…</div></div>';
   }
 
   let html = '<span class="question-type-badge">'+q.type+'</span>';
   if (photoHtml) html += photoHtml;
   if (q.prompt) html += '<div class="question-text">'+q.prompt+'</div>';
-  html += '<div class="question-hint">'+q.hint+'</div><div class="answer-fields">';
+
+  if (q.hint) {
+    if (q.hintHidden) {
+      html += '<div class="question-hint" id="hintBox" style="cursor:pointer;color:var(--accent);font-size:12px" onclick="showHint()">💡 ヒントを表示する</div>';
+    } else {
+      html += '<div class="question-hint">'+q.hint+'</div>';
+    }
+  }
+
+  html += '<div class="answer-fields">';
   q.fields.forEach((f,i) => {
-    // field.typeに応じてキーボードを切り替え
-    const isLatin = f.type === 'latin' || f.type === 'multi';
-    const inputAttrs = isLatin
+    const inputAttrs = f.inputmode === 'latin'
       ? 'inputmode="latin" lang="en" autocorrect="off" autocapitalize="off" autocomplete="off" spellcheck="false"'
       : 'inputmode="text" lang="ja" autocorrect="off" autocapitalize="off" autocomplete="off" spellcheck="false"';
     html += '<div><div class="field-label">'+f.label+'</div>'
+      + '<div style="display:flex;align-items:center;gap:6px">'
       + '<input class="answer-input" id="ans_'+i+'" type="text" '+inputAttrs
-      + ' placeholder="'+(f.type==='multi'?'カンマ区切りで入力':'')+'"></div>';
+      + ' placeholder="'+(f.type==='multi'?'カンマ区切りで入力':'')+'" style="flex:1">'
+      + (f.suffix ? '<span style="font-size:14px;color:var(--text2);flex-shrink:0">'+f.suffix+'</span>' : '')
+      + '</div></div>';
   });
   html += '</div><div class="feedback-box" id="feedbackBox"></div>';
   document.getElementById('quizBody').innerHTML = html;
 
-  // 写真を非同期で読み込んでスワイプUIに差し替え
   if (q.photos) {
     dbGetPhotos(q.genus.latin).then(photos => {
       const wrap = document.getElementById('quizPhotosWrap');
-      if (!wrap || photos.length === 0) {
-        if (wrap) wrap.style.display = 'none';
-        return;
-      }
+      if (!wrap || photos.length === 0) { if (wrap) wrap.style.display='none'; return; }
       buildPhotoSwiper(wrap, photos);
     });
   }
-
   setTimeout(() => document.getElementById('ans_0')?.focus(), 80);
 }
+
 
 function buildPhotoSwiper(wrap, photos) {
   let current = 0;
@@ -1355,42 +1464,53 @@ function handleQuizAction() {
     }
   });
 
-  const norm = (qScore/q.fields.length)*(200/quizState.questions.length);
-  quizState.score += norm;
-  state.unlocked[q.genus.latin] = true;
-  if (!state.accuracy[q.genus.latin]) state.accuracy[q.genus.latin] = {correct:0, total:0};
-  state.accuracy[q.genus.latin].total++;
-  if (allOk) state.accuracy[q.genus.latin].correct++;
-  state.mastery[q.genus.latin] = allOk
-    ? Math.min(3,(state.mastery[q.genus.latin]||0)+1)
-    : qScore===0 ? Math.max(0,(state.mastery[q.genus.latin]||0)-1)
-    : (state.mastery[q.genus.latin]||0);
+  // 形式別正答率を記録
+  const modeKey = q.mode || 'latin2family';
+  if (!state.accuracy[q.genus.latin]) state.accuracy[q.genus.latin] = {};
+  if (!state.accuracy[q.genus.latin][modeKey]) state.accuracy[q.genus.latin][modeKey] = {correct:0, total:0};
+  state.accuracy[q.genus.latin][modeKey].total++;
+  if (allOk) state.accuracy[q.genus.latin][modeKey].correct++;
+
+  // 習熟度：全形式の平均正答率から計算
+  const acc = state.accuracy[q.genus.latin];
+  const modes = ['latin2family','jp2latin','latin2jp'];
+  const tried = modes.filter(m => acc[m] && acc[m].total > 0);
+  if (tried.length > 0) {
+    const avg = tried.reduce((s,m) => s + acc[m].correct/acc[m].total, 0) / tried.length;
+    state.mastery[q.genus.latin] = avg >= 0.8 ? 3 : avg >= 0.6 ? 2 : avg >= 0.3 ? 1 : 0;
+  }
   state.todayCount++;
   saveProgress();
 
   const cls = allOk?'correct':qScore>0?'partial':'wrong';
   const fb = document.getElementById('feedbackBox');
   fb.className='feedback-box show '+cls;
-  fb.innerHTML = lines.join('<br>') + (q.genus.note?'<div class="feedback-note">📝 '+q.genus.note+'</div>':'');
+  // 正解欄：「科」「属」を補完して表示
+  const feedbackLines = lines.map(l => {
+    return l.replace(/正解は <span class="correct-ans">([^<]+)<\/span>/g, (match, ans) => {
+      if (q.fields.find(f => f.type==='family')) return '正解は <span class="correct-ans">'+ans+'科</span>';
+      if (q.fields.find(f => f.type==='jp' && f.suffix==='属')) return '正解は <span class="correct-ans">'+ans+'属</span>';
+      return match;
+    });
+  });
+  fb.innerHTML = feedbackLines.join('<br>') + (q.genus.note?'<div class="feedback-note">📝 '+q.genus.note+'</div>':'');
   document.getElementById('quizActionBtn').textContent = quizState.current+1<quizState.questions.length?'次の問題 →':'結果を見る';
-  document.getElementById('quizScoreLive').textContent = quizState.score.toFixed(1)+' pt';
+  document.getElementById('quizScoreLive').textContent = '';
 }
 
 function showResult() {
   const elapsed = Math.round((Date.now()-quizState.startTime)/1000);
-  const score = Math.min(200, Math.round(quizState.score*10)/10);
-  const pass = score >= 180;
+  const total = quizState.questions.length;
   document.getElementById('resultScreen').classList.add('show');
-  document.getElementById('resultEmoji').textContent = pass?'🌸':score>=140?'🌿':'🌱';
-  document.getElementById('resultScore').innerHTML = `${score.toFixed(1)}<span>/200</span>`;
-  document.getElementById('resultLabel').textContent = pass?'合格ライン達成！🎉':'次回も頑張ろう！';
+  document.getElementById('resultEmoji').textContent = '🌸';
+  document.getElementById('resultScore').innerHTML = total+'<span>問完了</span>';
+  document.getElementById('resultLabel').textContent = 'お疲れさまでした！';
   const min=Math.floor(elapsed/60), sec=elapsed%60;
-  document.getElementById('resultDetail').innerHTML = `
-    <div class="result-row"><span class="lbl">所要時間</span><span class="val">${min}分${sec}秒</span></div>
-    <div class="result-row"><span class="lbl">出題数</span><span class="val">${quizState.questions.length}問</span></div>
-    <div class="result-row"><span class="lbl">合格ライン</span><span class="val">180点以上</span></div>
-    <div class="result-row"><span class="lbl">今日の累計</span><span class="val">${state.todayCount}問</span></div>`;
-  state.history.unshift({date:new Date().toLocaleDateString('ja-JP'),score,mode:selectedMode,time:`${min}分${sec}秒`});
+  document.getElementById('resultDetail').innerHTML =
+    '<div class="result-row"><span class="lbl">所要時間</span><span class="val">'+min+'分'+sec+'秒</span></div>'
+    + '<div class="result-row"><span class="lbl">出題数</span><span class="val">'+total+'問</span></div>'
+    + '<div class="result-row"><span class="lbl">今日の累計</span><span class="val">'+state.todayCount+'問</span></div>';
+  state.history.unshift({date:new Date().toLocaleDateString('ja-JP'),total,mode:selectedMode,time:min+'分'+sec+'秒'});
   if(state.history.length>20) state.history.pop();
   saveProgress();
   renderHome(); renderStats();
@@ -1407,9 +1527,7 @@ function renderZukan() {
     if (s && !g.latin.toLowerCase().includes(s) && !g.jpName.includes(zukanSearch) && !g.family.includes(zukanSearch) && !g.read.includes(zukanSearch)) return false;
     if (zukanFilter==='unlocked') return !!state.unlocked[g.latin];
     if (zukanFilter==='locked') return !state.unlocked[g.latin];
-    if (zukanFilter==='m3') return (state.mastery[g.latin]||0)>=3;
-    if (zukanFilter==='m2') return (state.mastery[g.latin]||0)===2;
-    if (zukanFilter==='m1') return (state.mastery[g.latin]||0)===1;
+  
     if (zukanFilter==='photo') return false; // 後でフィルタ
     return true;
   });
@@ -1462,14 +1580,16 @@ async function openDetail(latin) {
     document.getElementById('mLatin').textContent = g.latin;
     document.getElementById('mSub').textContent = g.read;
 
-    // モーダル下スワイプで閉じる
-    const sheet = document.querySelector('.modal-sheet');
-    let swipeStartY = 0;
-    sheet.ontouchstart = e => { swipeStartY = e.touches[0].clientY; };
-    sheet.ontouchend = e => {
-      const diff = e.changedTouches[0].clientY - swipeStartY;
-      if (diff > 80 && sheet.scrollTop === 0) closeModal();
-    };
+    // モーダル下スワイプで閉じる（handleバーのみ）
+    const handle = document.querySelector('.modal-handle');
+    if (handle) {
+      let swipeStartY = 0;
+      handle.ontouchstart = e => { swipeStartY = e.touches[0].clientY; };
+      handle.ontouchend = e => {
+        const diff = e.changedTouches[0].clientY - swipeStartY;
+        if (diff > 40) closeModal();
+      };
+    }
 
     const parsed = parseNote(g.note);
     const noteRows = [
@@ -1483,12 +1603,6 @@ async function openDetail(latin) {
     let infoHtml = '<div class="info-item"><div class="lbl">科名（APG）</div><div class="val">'+g.family+'</div></div>';
     infoHtml += '<div class="info-item"><div class="lbl">属和名・代表種</div><div class="val">'+g.jpName+'</div></div>';
     if (g.oldFamily) infoHtml += '<div class="info-item"><div class="lbl">旧科名</div><div class="val">'+g.oldFamily+'</div></div>';
-    // 正答率
-    const acc = state.accuracy[g.latin];
-    if (acc && acc.total > 0) {
-      const pct = Math.round(acc.correct/acc.total*100);
-      infoHtml += '<div class="info-item"><div class="lbl">正答率</div><div class="val" style="color:'+(pct>=80?'var(--accent)':pct>=50?'var(--warn)':'var(--danger)')+'">'+pct+'% ('+acc.correct+'/'+acc.total+')</div></div>';
-    }
     infoHtml += noteRows;
     document.getElementById('mInfoGrid').innerHTML = infoHtml;
 
@@ -1509,12 +1623,8 @@ async function openDetail(latin) {
       ? '📍 ' + (loc.label || (loc.lat.toFixed(4) + ', ' + loc.lng.toFixed(4)))
       : '発見場所を記録';
 
-    const mastery = state.mastery[g.latin]||0;
-    document.getElementById('mMasteryRow').innerHTML = [
-      {l:'未',m:0,icon:'○'},{l:'★',m:1,icon:'★'},{l:'★★',m:2,icon:'★★'},{l:'★★★',m:3,icon:'★★★'}
-    ].map(function(item) {
-      return '<button class="mastery-btn '+(mastery===item.m?'active-m'+item.m:'')+'" onclick="setMastery(\''+g.latin+'\','+item.m+')">'+item.icon+'<br>'+item.l+'</button>';
-    }).join('');
+    // 形式別正答率バーグラフ
+    document.getElementById('mAccuracyBars').innerHTML = buildAccuracySection(g.latin);
   } catch(err) {
     console.warn('openDetail error:', err.message);
   }
@@ -1528,6 +1638,7 @@ async function renderMyPhotos(latin) {
       '<div class="my-photo-wrap">'
       + '<img class="my-photo" src="'+p.dataUrl+'" data-idx="'+i+'" onclick="handlePhotoTap(this)">'
       + '<button class="photo-delete" onclick="deleteMyPhoto(event,'+i+')">×</button>'
+      + (p.date ? '<div style="position:absolute;bottom:3px;left:3px;font-size:8px;background:rgba(0,0,0,.6);color:#fff;border-radius:3px;padding:1px 4px">'+p.date+'</div>' : '')
       + '</div>'
     ).join('')
     + '<button class="photo-add-btn" onclick="document.getElementById(\'photoInput\').click()">＋</button>';
@@ -1540,7 +1651,44 @@ function handlePhotoTap(img) {
   }
 }
 
-function closeModal() { document.getElementById('modalOverlay').classList.remove('show'); renderZukan(); renderHome(); }
+function buildAccuracyBar(acc, modeKey, label) {
+  const d = acc && acc[modeKey];
+  if (!d || d.total === 0) {
+    return '<div style="margin-bottom:8px">'
+      + '<div style="font-size:10px;color:var(--text3);margin-bottom:3px">'+label+'</div>'
+      + '<div style="font-size:10px;color:var(--text3)">未出題</div>'
+      + '</div>';
+  }
+  const pct = d.correct / d.total;
+  const barW = 140; // px
+  const correctW = Math.round(pct * barW);
+  const wrongW = barW - correctW;
+  return '<div style="margin-bottom:8px">'
+    + '<div style="font-size:10px;color:var(--text3);margin-bottom:3px">'+label+'</div>'
+    + '<div style="display:flex;align-items:center;gap:6px">'
+    + '<div style="display:flex;height:10px;border-radius:5px;overflow:hidden;width:'+barW+'px;flex-shrink:0">'
+    + '<div style="width:'+correctW+'px;background:var(--accent)"></div>'
+    + '<div style="width:'+wrongW+'px;background:var(--surface2);border:1px solid var(--border)"></div>'
+    + '</div>'
+    + '<span style="font-size:11px;color:var(--text2);white-space:nowrap">'+d.correct+'問正解 / '+d.total+'問</span>'
+    + '</div>'
+    + '</div>';
+}
+
+function buildAccuracySection(latin) {
+  const acc = state.accuracy[latin];
+  if (!acc) return '<div style="font-size:11px;color:var(--text3)">まだ出題されていません</div>';
+  return buildAccuracyBar(acc, 'latin2family', '属名→科名')
+    + buildAccuracyBar(acc, 'jp2latin', '和名→属名（ラテン語）')
+    + buildAccuracyBar(acc, 'latin2jp', '属名→属和名/代表種名');
+}
+// 全3形式で正解済みの属数（renderHomeより前で定義済み）
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('show');
+  renderZukan();
+  renderHome();
+}
 function closeModalIfOutside(e) { if(e.target===document.getElementById('modalOverlay')) closeModal(); }
 
 // 写真アップロード：Cloudinary（ログイン時）またはIndexedDB（未ログイン時）
@@ -1563,14 +1711,40 @@ async function handlePhotoUpload(e) {
   const existing = await dbGetPhotos(latin);
   for (const file of files) {
     try {
+      // Exifから撮影日時・GPS取得（アップロード前に読む）
+      let exifDate = null, exifLat = null, exifLng = null;
+      if (typeof exifr !== 'undefined') {
+        try {
+          const exif = await exifr.parse(file, ['DateTimeOriginal', 'latitude', 'longitude']);
+          if (exif) {
+            if (exif.DateTimeOriginal) exifDate = exif.DateTimeOriginal;
+            if (exif.latitude && exif.longitude) {
+              exifLat = exif.latitude;
+              exifLng = exif.longitude;
+            }
+          }
+        } catch(e) {}
+      }
+
       let url;
       if (currentUser) {
         url = await uploadToCloudinary(file);
       } else {
         url = await compressImage(file, 800, 0.75);
       }
-      existing.push({ dataUrl: url });
+
+      // 撮影日時を記録（Exifがなければアップロード日時）
+      const photoDate = exifDate ? exifDate.toLocaleDateString('ja-JP') : new Date().toLocaleDateString('ja-JP');
+      existing.push({ dataUrl: url, date: photoDate });
       if (!state.photoCache[latin]) state.photoCache[latin] = url;
+
+      // 撮影場所（Exifから取得できた場合、かつまだ記録がない場合）
+      if (exifLat && exifLng && !state.location[latin]) {
+        state.location[latin] = { lat: exifLat, lng: exifLng };
+        document.getElementById('mLocationText').textContent =
+          '📍 ' + exifLat.toFixed(4) + ', ' + exifLng.toFixed(4);
+      }
+
     } catch(err) {
       showToast('アップロードに失敗しました ⚠️');
       continue;
@@ -1579,7 +1753,7 @@ async function handlePhotoUpload(e) {
   await dbSetPhotos(latin, existing);
   state.unlocked[latin] = true;
 
-  // 位置情報を保存（まだ記録がない場合のみ）
+  // ExifにGPSがなかった場合のみ現在地で補完
   const loc = await locPromise;
   if (loc && !state.location[latin]) {
     state.location[latin] = { lat: loc.lat, lng: loc.lng };
@@ -1665,12 +1839,6 @@ function viewPhotos(urls, startIdx) {
 
 function closeFullscreen() { document.getElementById('fullscreenPhoto').classList.remove('show'); }
 
-async function setMastery(latin, val) {
-  state.mastery[latin]=val;
-  await saveProgress();
-  openDetail(latin);
-}
-
 async function recordLocation() {
   if (!navigator.geolocation) { showToast('位置情報が使えません'); return; }
   navigator.geolocation.getCurrentPosition(async pos => {
@@ -1684,15 +1852,39 @@ async function recordLocation() {
 
 // ========== STATS ==========
 function renderStats() {
-  const unlocked = Object.keys(state.unlocked).length;
-  const m3 = Object.values(state.mastery).filter(v=>v>=3).length;
-  const best = state.history.length ? Math.max(...state.history.map(h=>h.score)) : 0;
-  document.getElementById('statsGrid').innerHTML = `
-    <div class="science-card"><div class="sc-label">解放済み属</div><div class="sc-val">${unlocked}</div><div class="sc-sub">/ 300属</div></div>
-    <div class="science-card"><div class="sc-label">★★★習熟</div><div class="sc-val">${m3}</div><div class="sc-sub">属</div></div>
-    <div class="science-card"><div class="sc-label">最高スコア</div><div class="sc-val">${best.toFixed(1)}</div><div class="sc-sub">/ 200点</div></div>
-    <div class="science-card"><div class="sc-label">今日</div><div class="sc-val">${state.todayCount}</div><div class="sc-sub">問</div></div>`;
-  const h = document.getElementById('historyList');
+  const memorized = countMemorized();
+  const weakCount = GENERA.filter(g => {
+    const acc = state.accuracy[g.latin];
+    if (!acc) return false;
+    const modes = ['latin2family','jp2latin','latin2jp'];
+    const tried = modes.filter(m => acc[m] && acc[m].total > 0);
+    if (tried.length === 0) return false;
+    const avg = tried.reduce((s,m) => s + acc[m].correct/acc[m].total, 0) / tried.length;
+    return avg < 0.5;
+  }).length;
+  document.getElementById('statsGrid').innerHTML =
+    '<div class="science-card"><div class="sc-label">記憶済み属</div><div class="sc-val">'+memorized+'</div><div class="sc-sub">/ 300属</div></div>'
+    + '<div class="science-card"><div class="sc-label">苦手属</div><div class="sc-val">'+weakCount+'</div><div class="sc-sub">正答率50%未満</div></div>'
+    + '<div class="science-card"><div class="sc-label">写真登録済み</div><div class="sc-val">'+Object.keys(state.photoCache).length+'</div><div class="sc-sub">属</div></div>'
+    + '<div class="science-card"><div class="sc-label">今日の出題数</div><div class="sc-val">'+state.todayCount+'</div><div class="sc-sub">問</div></div>';
+  // 全体の形式別正答率を集計
+  const globalAcc = { latin2family:{correct:0,total:0}, jp2latin:{correct:0,total:0}, latin2jp:{correct:0,total:0} };
+  Object.values(state.accuracy).forEach(acc => {
+    if (!acc || typeof acc !== 'object') return;
+    ['latin2family','jp2latin','latin2jp'].forEach(m => {
+      if (acc[m]) {
+        globalAcc[m].correct += acc[m].correct;
+        globalAcc[m].total += acc[m].total;
+      }
+    });
+  });
+  const accEl = document.getElementById('statsAccuracy');
+  if (accEl) {
+    accEl.innerHTML =
+      buildAccuracyBar(globalAcc, 'latin2family', '属名→科名')
+      + buildAccuracyBar(globalAcc, 'jp2latin', '和名→属名（ラテン語）')
+      + buildAccuracyBar(globalAcc, 'latin2jp', '属名→属和名/代表種名');
+  }
   h.innerHTML = state.history.length
     ? state.history.map(s=>`<div class="history-item"><div><div class="date">${s.date}</div><div class="hmode">${s.mode}　${s.time}</div></div><div class="score">${parseFloat(s.score).toFixed(1)} pt</div></div>`).join('')
     : '<div class="empty-state">まだ記録がありません。<br>練習を始めましょう 🌱</div>';
