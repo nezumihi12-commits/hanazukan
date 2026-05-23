@@ -368,7 +368,7 @@
   <div class="science-badge">
     <div class="info"><strong>本番ルール適用中</strong><br>スペルミス1箇所→0.5点　200点満点・180点以上で合格</div>
   </div>
-  <div class="save-status" id="saveStatus">💾 データはClaudeアカウントに保存されます</div>
+  <div class="save-status" id="saveStatus">💾 接続中…</div>
 </div>
 
 <div id="quiz" class="screen" style="position:relative">
@@ -984,27 +984,23 @@ async function init() {
   const today = new Date().toDateString();
   if (state.todayDate !== today) { state.todayCount = 0; state.todayDate = today; }
 
+  // IndexedDBからphotoCacheを再構築してから描画
+  if (photoDB) {
+    for (const g of GENERA) {
+      const p = await dbGetPhotos(g.latin);
+      if (p.length > 0) state.photoCache[g.latin] = p[0].dataUrl;
+    }
+  }
+
   renderHome();
   renderZukan();
   renderStats();
-
-  // IndexedDBからphotoCacheを再構築
-  if (photoDB) {
-    (async () => {
-      for (const g of GENERA) {
-        const p = await dbGetPhotos(g.latin);
-        if (p.length > 0) state.photoCache[g.latin] = p[0].dataUrl;
-      }
-      renderZukan();
-      renderHome();
-    })();
-  }
 
   // Firebase初期化（GitHub Pages上でのみ動作）
   try {
     await initFirebase();
   } catch(e) {
-    // Artifact環境では失敗するが無視
+    document.getElementById('saveStatus').textContent = '💾 ローカル保存中';
   }
 }
 
@@ -1885,9 +1881,17 @@ function renderStats() {
       + buildAccuracyBar(globalAcc, 'jp2latin', '和名→属名（ラテン語）')
       + buildAccuracyBar(globalAcc, 'latin2jp', '属名→属和名/代表種名');
   }
-  h.innerHTML = state.history.length
-    ? state.history.map(s=>`<div class="history-item"><div><div class="date">${s.date}</div><div class="hmode">${s.mode}　${s.time}</div></div><div class="score">${parseFloat(s.score).toFixed(1)} pt</div></div>`).join('')
-    : '<div class="empty-state">まだ記録がありません。<br>練習を始めましょう 🌱</div>';
+  const histEl = document.getElementById('historyList');
+  if (histEl) {
+    histEl.innerHTML = state.history.length
+      ? state.history.map(s =>
+          '<div class="history-item"><div>'
+          + '<div class="date">'+s.date+'</div>'
+          + '<div class="hmode">'+s.mode+'　'+s.time+'</div>'
+          + '</div><div class="score">'+s.total+'問</div></div>'
+        ).join('')
+      : '<div class="empty-state">まだ記録がありません。<br>練習を始めましょう 🌱</div>';
+  }
 }
 
 // ========== NAV ==========
