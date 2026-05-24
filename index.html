@@ -11,6 +11,8 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js" onerror="console.warn('Firebase Auth load failed')"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js" onerror="console.warn('Firebase Firestore load failed')"></script>
 <script src="https://cdn.jsdelivr.net/npm/exifr/dist/lite.umd.js" onerror="console.warn('exifr load failed')"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;600;800&family=DM+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -214,9 +216,11 @@
 
   .source-row { display: flex; gap: 7px; }
   .source-link { flex: 1; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 9px; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text2); font-size: 12px; text-decoration: none; }
-  .location-row { display: flex; align-items: center; gap: 8px; background: var(--surface2); border-radius: var(--radius-sm); padding: 9px 11px; }
+  .location-row { display: flex; align-items: center; gap: 8px; background: var(--surface2); border-radius: var(--radius-sm); padding: 9px 11px; cursor: pointer; }
   .location-text { font-size: 12px; color: var(--text2); flex: 1; line-height: 1.4; }
-  .location-btn { padding: 5px 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; color: var(--text2); font-size: 11px; cursor: pointer; white-space: nowrap; }
+  .location-btn { padding: 5px 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; color: var(--text2); font-size: 11px; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
+  #mMapArea { width: 100%; height: 180px; border-radius: var(--radius-sm); overflow: hidden; display: none; margin-top: 6px; border: 1px solid var(--border); }
+  .leaflet-container { background: var(--surface2); }
   .mastery-row { display: flex; gap: 6px; }
   .mastery-btn { flex: 1; padding: 8px 4px; border-radius: var(--radius-sm); border: 1.5px solid var(--border); background: var(--surface2); color: var(--text2); font-size: 11px; cursor: pointer; text-align: center; transition: all .2s; line-height: 1.4; }
   .mastery-btn.active-m1 { border-color: var(--warn); color: var(--warn); background: #2a2010; }
@@ -442,10 +446,13 @@
     <!-- 外部リンク（写真収集用） -->
     <div class="source-row" id="mSourceRow"></div>
 
-    <div class="location-row">
-      <span style="font-size:16px">📍</span>
-      <span class="location-text" id="mLocationText">発見場所を記録</span>
-      <button class="location-btn" onclick="recordLocation()">現在地取得</button>
+    <div>
+      <div class="location-row" onclick="toggleMap()">
+        <span style="font-size:16px">📍</span>
+        <span class="location-text" id="mLocationText">発見場所を記録</span>
+        <button class="location-btn" onclick="event.stopPropagation();recordLocation()">現在地取得</button>
+      </div>
+      <div id="mMapArea"></div>
     </div>
 
     <div>
@@ -1615,9 +1622,12 @@ async function openDetail(latin) {
       '<a class="source-link" href="https://powo.science.kew.org/taxon/search?q='+encodeURIComponent(g.latin)+'" target="_blank">🌐 POWO<br><span style="font-size:9px;color:var(--text3)">'+g.latin+'</span></a>';
 
     const loc = state.location[g.latin];
+    const mapArea = document.getElementById('mMapArea');
+    if (mapArea) { mapArea.style.display = 'none'; }
+    if (_leafletMap) { _leafletMap.remove(); _leafletMap = null; }
     document.getElementById('mLocationText').textContent = loc
-      ? '📍 ' + (loc.label || (loc.lat.toFixed(4) + ', ' + loc.lng.toFixed(4)))
-      : '発見場所を記録';
+      ? '📍 発見場所を記録済み（タップで地図）'
+      : '📍 発見場所を記録';
 
     // 形式別正答率バーグラフ
     document.getElementById('mAccuracyBars').innerHTML = buildAccuracySection(g.latin);
@@ -1835,13 +1845,60 @@ function viewPhotos(urls, startIdx) {
 
 function closeFullscreen() { document.getElementById('fullscreenPhoto').classList.remove('show'); }
 
+let _leafletMap = null;
+
+function toggleMap() {
+  const loc = currentGenus ? state.location[currentGenus.latin] : null;
+  if (!loc) return;
+  const mapArea = document.getElementById('mMapArea');
+  if (mapArea.style.display === 'block') {
+    mapArea.style.display = 'none';
+    return;
+  }
+  mapArea.style.display = 'block';
+  // 既存のマップを破棄
+  if (_leafletMap) { _leafletMap.remove(); _leafletMap = null; }
+  if (typeof L === 'undefined') {
+    mapArea.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-size:12px">地図を読み込めませんでした</div>';
+    return;
+  }
+  _leafletMap = L.map('mMapArea', { zoomControl: true, attributionControl: false })
+    .setView([loc.lat, loc.lng], 15);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+  }).addTo(_leafletMap);
+  const marker = L.marker([loc.lat, loc.lng]).addTo(_leafletMap);
+  marker.bindPopup(
+    currentGenus.latin + '<br>'
+    + '<a href="https://maps.apple.com/?q='+loc.lat+','+loc.lng+'" target="_blank" style="color:#4a9">'
+    + 'マップで開く</a>'
+  ).openPopup();
+  // マップのリサイズを確実に
+  setTimeout(() => _leafletMap.invalidateSize(), 100);
+}
+
+function showMap(lat, lng) {
+  const mapArea = document.getElementById('mMapArea');
+  mapArea.style.display = 'block';
+  if (_leafletMap) { _leafletMap.remove(); _leafletMap = null; }
+  if (typeof L === 'undefined') return;
+  _leafletMap = L.map('mMapArea', { zoomControl: true, attributionControl: false })
+    .setView([lat, lng], 15);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(_leafletMap);
+  L.marker([lat, lng]).addTo(_leafletMap)
+    .bindPopup('<a href="https://maps.apple.com/?q='+lat+','+lng+'" target="_blank" style="color:#4a9">マップで開く</a>')
+    .openPopup();
+  setTimeout(() => _leafletMap.invalidateSize(), 100);
+}
+
 async function recordLocation() {
   if (!navigator.geolocation) { showToast('位置情報が使えません'); return; }
   navigator.geolocation.getCurrentPosition(async pos => {
     const {latitude:lat, longitude:lng} = pos.coords;
     state.location[currentGenus.latin] = {lat, lng};
     await saveProgress();
-    document.getElementById('mLocationText').textContent = `📍 ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+    document.getElementById('mLocationText').textContent = '📍 発見場所を記録済み（タップで地図）';
+    showMap(lat, lng);
     showToast('現在地を記録しました 📍');
   }, () => showToast('位置情報の取得に失敗しました'));
 }
