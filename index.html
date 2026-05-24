@@ -10,7 +10,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js" onerror="console.warn('Firebase SDK load failed')"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js" onerror="console.warn('Firebase Auth load failed')"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js" onerror="console.warn('Firebase Firestore load failed')"></script>
-<script src="https://cdn.jsdelivr.net/npm/exifr/dist/lite.umd.js" onerror="console.warn('exifr load failed')"></script>
+<script src="https://cdn.jsdelivr.net/npm/exifr/dist/full.umd.js" onerror="console.warn('exifr load failed')"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;600;800&family=DM+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
@@ -1711,15 +1711,18 @@ async function handlePhotoUpload(e) {
       let exifDate = null, exifLat = null, exifLng = null;
       if (typeof exifr !== 'undefined') {
         try {
-          const exif = await exifr.parse(file, ['DateTimeOriginal', 'latitude', 'longitude']);
+          const exif = await exifr.parse(file, {
+            tiff: true, exif: true, gps: true,
+            pick: ['DateTimeOriginal', 'GPSLatitude', 'GPSLongitude', 'GPSLatitudeRef', 'GPSLongitudeRef']
+          });
           if (exif) {
-            if (exif.DateTimeOriginal) exifDate = exif.DateTimeOriginal;
-            if (exif.latitude && exif.longitude) {
-              exifLat = exif.latitude;
-              exifLng = exif.longitude;
-            }
+            if (exif.DateTimeOriginal) exifDate = new Date(exif.DateTimeOriginal);
+            // exifrはlatitude/longitudeとして返すこともある
+            const lat = exif.latitude || exif.GPSLatitude;
+            const lng = exif.longitude || exif.GPSLongitude;
+            if (lat && lng) { exifLat = lat; exifLng = lng; }
           }
-        } catch(e) {}
+        } catch(e) { console.warn('Exif parse error:', e); }
       }
 
       let url;
@@ -1737,7 +1740,10 @@ async function handlePhotoUpload(e) {
       // 撮影場所（Exifから取得できた場合は毎回上書き）
       if (exifLat && exifLng) {
         state.location[latin] = { lat: exifLat, lng: exifLng };
-        document.getElementById('mLocationText').textContent = '📍 発見場所を記録済み（タップで地図）';
+        document.getElementById('mLocationText').textContent = '📍 撮影場所を記録済み（タップで地図）';
+        console.log('Exif GPS取得成功:', exifLat, exifLng);
+      } else {
+        console.log('Exif GPSなし。位置情報は記録しません');
       }
 
     } catch(err) {
