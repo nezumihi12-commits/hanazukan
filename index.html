@@ -1704,16 +1704,6 @@ async function handlePhotoUpload(e) {
   const latin = currentGenus.latin;
   showToast('アップロード中… 📤');
 
-  // 位置情報を並行して取得
-  const locPromise = new Promise(resolve => {
-    if (!navigator.geolocation) { resolve(null); return; }
-    navigator.geolocation.getCurrentPosition(
-      pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      () => resolve(null),
-      { timeout: 5000 }
-    );
-  });
-
   const existing = await dbGetPhotos(latin);
   for (const file of files) {
     try {
@@ -1739,16 +1729,15 @@ async function handlePhotoUpload(e) {
         url = await compressImage(file, 800, 0.75);
       }
 
-      // 撮影日時を記録（Exifがなければアップロード日時）
+      // 撮影日時を記録
       const photoDate = exifDate ? exifDate.toLocaleDateString('ja-JP') : new Date().toLocaleDateString('ja-JP');
       existing.push({ dataUrl: url, date: photoDate });
       if (!state.photoCache[latin]) state.photoCache[latin] = url;
 
-      // 撮影場所（Exifから取得できた場合、かつまだ記録がない場合）
-      if (exifLat && exifLng && !state.location[latin]) {
+      // 撮影場所（Exifから取得できた場合は毎回上書き）
+      if (exifLat && exifLng) {
         state.location[latin] = { lat: exifLat, lng: exifLng };
-        document.getElementById('mLocationText').textContent =
-          '📍 ' + exifLat.toFixed(4) + ', ' + exifLng.toFixed(4);
+        document.getElementById('mLocationText').textContent = '📍 発見場所を記録済み（タップで地図）';
       }
 
     } catch(err) {
@@ -1758,14 +1747,6 @@ async function handlePhotoUpload(e) {
   }
   await dbSetPhotos(latin, existing);
   state.unlocked[latin] = true;
-
-  // ExifにGPSがなかった場合のみ現在地で補完
-  const loc = await locPromise;
-  if (loc && !state.location[latin]) {
-    state.location[latin] = { lat: loc.lat, lng: loc.lng };
-    document.getElementById('mLocationText').textContent =
-      '📍 ' + loc.lat.toFixed(4) + ', ' + loc.lng.toFixed(4);
-  }
 
   await saveProgress();
   await renderMyPhotos(latin);
